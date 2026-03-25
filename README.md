@@ -1,40 +1,55 @@
-# Chariot Realty Middleware
+# Chariot Realty Backend For ElevenLabs
 
-Node.js middleware service for Chariot Realty that sits between WhatsApp Business API and an ElevenLabs conversational agent, with Supabase as the source of truth.
+Node.js backend service for Chariot Realty where ElevenLabs owns the WhatsApp channel and this app provides CRM state, personalization, server tools, and transcript sync through Supabase.
+
+## Architecture
+
+- ElevenLabs is the WhatsApp transport owner
+- This service does not send or receive WhatsApp messages directly
+- ElevenLabs calls this backend for:
+  - conversation initiation personalization
+  - server tool execution
+  - transcript sync / post-call ingestion
+- Supabase remains the source of truth for:
+  - `contacts`
+  - `listings`
+  - `leads`
+  - `conversations`
+  - `sessions`
 
 ## What This Service Handles
 
-- Resolves incoming WhatsApp numbers into `owner`, `broker`, `lead`, or `system`
+- Resolves incoming users into `owner`, `broker`, `lead`, or `system`
 - Seeds Kapil (`9773757759`) as the owner contact
 - Treats `9137833547` as a system/UI number and never as a lead or broker
-- Auto-creates unknown contacts as leads in Supabase
-- Stores conversation history and fetches the last 10 messages for ElevenLabs context
-- Tracks sessions in Supabase, including Kapil's 10-minute owner session timeout
-- Saves broker listings into inventory
-- Exposes tool handlers to ElevenLabs:
+- Auto-creates unknown contacts as leads in Supabase during conversation initiation
+- Tracks owner sessions with a 10-minute timeout
+- Exposes ElevenLabs server tools:
   - `search_listings`
   - `save_listing`
   - `get_leads`
   - `update_lead_status`
   - `get_inventory_summary`
   - `schedule_site_visit`
-- Includes deterministic fallback replies if ElevenLabs is not configured yet
+- Returns CRM-backed dynamic variables for ElevenLabs personalization
+- Syncs ElevenLabs transcripts back into Supabase conversation memory
 
 ## Endpoints
 
-- `POST /webhook` receive WhatsApp messages
-- `GET /webhook` WhatsApp verification callback
-- `GET /health` Railway health check
-- `POST /listings` manual listing add
-- `GET /leads` leads dashboard or JSON
-- `GET /inventory` inventory dashboard or JSON
-- `GET /conversations/:phone` fetch conversation history
+- `GET /health`
+- `GET /elevenlabs/manifest`
+- `POST /elevenlabs/conversation-init`
+- `POST /elevenlabs/tools/:toolName`
+- `POST /elevenlabs/conversations/sync`
+- `POST /elevenlabs/post-call`
+- `POST /listings`
+- `GET /leads`
+- `GET /inventory`
+- `GET /conversations/:phone`
 
 ## Required Environment Variables
 
 ```env
-WHATSAPP_TOKEN=
-WHATSAPP_PHONE_ID=
 ELEVENLABS_API_KEY=
 ELEVENLABS_AGENT_ID=
 SUPABASE_URL=
@@ -45,21 +60,20 @@ SESSION_TIMEOUT_MINUTES=10
 PORT=3000
 ```
 
-`WHATSAPP_VERIFY_TOKEN` is optional but recommended for Meta webhook verification.
+Optional hardening:
+
+```env
+ELEVENLABS_TOOL_SECRET=
+```
+
+If `ELEVENLABS_TOOL_SECRET` is set, protect ElevenLabs endpoints with:
+
+- `Authorization: Bearer <secret>`
+- or `x-chariot-secret: <secret>`
 
 ## Supabase Setup
 
-Run [supabase/schema.sql](/C:/Users/visha/Documents/Playground/chariot-realty-middleware/supabase/schema.sql) in the Supabase SQL editor before starting the service.
-
-That schema creates:
-
-- `contacts`
-- `listings`
-- `leads`
-- `conversations`
-- `sessions`
-
-It also seeds Kapil as the owner contact.
+Run [schema.sql](/C:/Users/visha/Documents/Playground/chariot-realty-middleware/supabase/schema.sql) in the Supabase SQL editor before starting the service.
 
 ## Local Run
 
@@ -69,38 +83,58 @@ cp .env.example .env
 npm start
 ```
 
-If you do not set ElevenLabs or WhatsApp credentials yet, the service can still parse requests and produce dry-run/fallback behavior.
+## ElevenLabs Setup
 
-## Railway Deploy
+Configure your ElevenLabs agent to use:
 
-1. Create a Railway service from this folder.
-2. Add the environment variables above.
-3. Deploy using the included [Dockerfile](/C:/Users/visha/Documents/Playground/chariot-realty-middleware/Dockerfile) or Railway's default Node build flow.
-4. Set the health check path to `/health`.
+- Conversation initiation webhook:
+  - `POST /elevenlabs/conversation-init`
+- Server tools:
+  - `POST /elevenlabs/tools/search_listings`
+  - `POST /elevenlabs/tools/save_listing`
+  - `POST /elevenlabs/tools/get_leads`
+  - `POST /elevenlabs/tools/update_lead_status`
+  - `POST /elevenlabs/tools/get_inventory_summary`
+  - `POST /elevenlabs/tools/schedule_site_visit`
 
-## Quick Webhook Test
+You can inspect the available backend endpoints via:
 
-Simplified payload:
+- [manifest](/C:/Users/visha/Documents/Playground/chariot-realty-middleware/src/routes/elevenlabs.js)
+- `GET /elevenlabs/manifest`
 
-```json
-{
-  "from": "919900001111",
-  "name": "Aarav",
-  "text": "Looking for 3BHK in BKC around 8 cr to buy",
-  "source": "meta_ads"
-}
-```
+For conversation memory, configure either:
 
-Example:
+- a post-call webhook to `POST /elevenlabs/post-call`
+- or call `POST /elevenlabs/conversations/sync` with a `conversation_id`
+
+## Example Requests
+
+Conversation initiation:
 
 ```bash
-curl -X POST http://localhost:3000/webhook \
+curl -X POST http://localhost:3000/elevenlabs/conversation-init \
   -H "Content-Type: application/json" \
-  -d "{\"from\":\"919900001111\",\"name\":\"Aarav\",\"text\":\"Looking for 3BHK in BKC around 8 cr to buy\",\"source\":\"meta_ads\"}"
+  -d "{\"caller_id\":\"919900001111\",\"name\":\"Aarav\",\"source\":\"meta_ads\"}"
+```
+
+Tool call:
+
+```bash
+curl -X POST http://localhost:3000/elevenlabs/tools/search_listings \
+  -H "Content-Type: application/json" \
+  -d "{\"bhk\":3,\"area\":\"BKC\",\"budget\":80000000,\"deal_type\":\"buy\"}"
+```
+
+Transcript sync:
+
+```bash
+curl -X POST http://localhost:3000/elevenlabs/conversations/sync \
+  -H "Content-Type: application/json" \
+  -d "{\"conversation_id\":\"YOUR_CONVERSATION_ID\",\"phone\":\"9773757759\"}"
 ```
 
 ## Notes
 
-- Broker roles must exist in the `contacts` table ahead of time, otherwise unknown numbers default to `lead`.
-- The owner flow supports direct shortcuts such as `Show leads today`, `Add listing ...`, `How many inquiries this week?`, and `Show broker listings`.
-- System-number messages are logged to `conversations` but never routed to ElevenLabs.
+- Broker roles must exist in `contacts` ahead of time, otherwise unknown numbers default to `lead`.
+- The agent prompt should use dynamic variables like `{{user_name}}`, `{{user_role}}`, `{{crm_history}}`, and `{{owner_session_active}}`.
+- Meta transport tokens are not required in this architecture because ElevenLabs is the WhatsApp integration owner.

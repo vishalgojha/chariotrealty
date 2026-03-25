@@ -2,11 +2,11 @@ import express from "express";
 import { isSupabaseConfigured } from "./config/env.js";
 import { seedKnownContacts } from "./services/contact-service.js";
 import { conversationsRouter } from "./routes/conversations.js";
+import { elevenLabsRouter } from "./routes/elevenlabs.js";
 import { healthRouter } from "./routes/health.js";
 import { inventoryRouter } from "./routes/inventory.js";
 import { leadsRouter } from "./routes/leads.js";
 import { listingsRouter } from "./routes/listings.js";
-import { webhookRouter } from "./routes/webhook.js";
 
 export async function createApp() {
   if (isSupabaseConfigured()) {
@@ -26,12 +26,13 @@ export async function createApp() {
   app.get("/", (_req, res) => {
     res.json({
       service: "chariot-realty-middleware",
-      status: "ok"
+      status: "ok",
+      transportMode: "elevenlabs_whatsapp_partner_managed"
     });
   });
 
   app.use("/health", healthRouter);
-  app.use("/webhook", webhookRouter);
+  app.use("/elevenlabs", elevenLabsRouter);
   app.use("/listings", listingsRouter);
   app.use("/leads", leadsRouter);
   app.use("/inventory", inventoryRouter);
