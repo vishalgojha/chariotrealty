@@ -7,6 +7,10 @@ import { healthRouter } from "./routes/health.js";
 import { inventoryRouter } from "./routes/inventory.js";
 import { leadsRouter } from "./routes/leads.js";
 import { listingsRouter } from "./routes/listings.js";
+import { saveConversationRouter } from "./routes/save-conversation.js";
+import { saveLeadRouter } from "./routes/save-lead.js";
+import { saveListingRouter } from "./routes/save-listing.js";
+import { webhookRouter } from "./routes/webhook.js";
 
 export async function createApp() {
   if (isSupabaseConfigured()) {
@@ -27,11 +31,16 @@ export async function createApp() {
     res.json({
       service: "chariot-realty-middleware",
       status: "ok",
-      transportMode: "elevenlabs_whatsapp_partner_managed"
+      company: "Chariot Realty",
+      transportMode: "propai_live_with_elevenlabs_hooks"
     });
   });
 
   app.use("/health", healthRouter);
+  app.use("/webhook", webhookRouter);
+  app.use("/save-conversation", saveConversationRouter);
+  app.use("/save-lead", saveLeadRouter);
+  app.use("/save-listing", saveListingRouter);
   app.use("/elevenlabs", elevenLabsRouter);
   app.use("/listings", listingsRouter);
   app.use("/leads", leadsRouter);

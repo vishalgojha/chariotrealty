@@ -2,11 +2,12 @@ import { Router } from "express";
 import { env } from "../config/env.js";
 import { elevenLabsAuth } from "../middleware/elevenlabs-auth.js";
 import { getConversationHistory } from "../services/conversation-service.js";
+import { buildChariotAiContext } from "../services/chariot-context-service.js";
 import { getConversationDetails, syncConversationTranscript } from "../services/elevenlabs-service.js";
 import { resolveContact } from "../services/contact-service.js";
 import { getOwnerSessionState, touchSession } from "../services/session-service.js";
 import { executeTool } from "../services/tool-service.js";
-import { extractInitiationName, extractInitiationPhone, extractLeadSource, formatHistoryForPrompt } from "../utils/elevenlabs.js";
+import { extractInitiationName, extractInitiationPhone, extractLeadSource } from "../utils/elevenlabs.js";
 
 export const elevenLabsRouter = Router();
 
@@ -14,7 +15,7 @@ elevenLabsRouter.use(elevenLabsAuth);
 
 elevenLabsRouter.get("/manifest", (_req, res) => {
   res.json({
-    transport_mode: "elevenlabs_whatsapp_partner_managed",
+    transport_mode: "propai_live_chariot_middleware",
     conversation_init_url: "/elevenlabs/conversation-init",
     transcript_sync_url: "/elevenlabs/conversations/sync",
     post_call_webhook_url: "/elevenlabs/post-call",
@@ -73,23 +74,26 @@ elevenLabsRouter.post("/conversation-init", async (req, res, next) => {
     }
 
     const history = (await getConversationHistory(contact.phone, 10)).reverse();
+    const context = buildChariotAiContext({
+      contact,
+      history,
+      source: extractLeadSource(req.body),
+      ownerSessionActive
+    });
 
     res.json({
       type: "conversation_initiation_client_data",
       user_id: contact.phone,
-      dynamic_variables: {
-        user_name: contact.name || "Unknown",
-        user_role: contact.role,
-        user_phone: contact.phone,
-        lead_source: extractLeadSource(req.body),
-        owner_session_active: ownerSessionActive,
-        crm_history: formatHistoryForPrompt(history),
-        system_number: env.systemNumber
-      },
+      dynamic_variables: context.dynamic_variables,
       conversation_config_override: {
         conversation: {
           text_only: true
         }
+      },
+      metadata: {
+        company: context.company,
+        tools: context.tools,
+        instructions: context.instructions
       }
     });
   } catch (error) {
