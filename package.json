@@ -1,0 +1,21 @@
+{
+  "name": "chariot-realty-middleware",
+  "version": "1.0.0",
+  "description": "WhatsApp to ElevenLabs middleware for Chariot Realty",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "ws": "^8.18.1"
+  }
+}
