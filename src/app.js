@@ -10,7 +10,11 @@ import { webhookRouter } from "./routes/webhook.js";
 
 export async function createApp() {
   if (isSupabaseConfigured()) {
-    await seedKnownContacts();
+    try {
+      await seedKnownContacts();
+    } catch (error) {
+      console.warn(`[startup] Supabase is configured, but initialization is incomplete: ${error.message}`);
+    }
   } else {
     console.warn("[startup] Supabase is not configured yet. Health endpoint will work, but data routes will require env vars.");
   }
