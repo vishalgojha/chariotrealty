@@ -16,8 +16,12 @@ export const env = {
   sessionTimeoutMinutes: Number(process.env.SESSION_TIMEOUT_MINUTES || 10)
 };
 
-export function isElevenLabsConfigured() {
-  return Boolean(env.elevenLabsApiKey && env.elevenLabsAgentId);
+export function hasElevenLabsApiKey() {
+  return Boolean(env.elevenLabsApiKey);
+}
+
+export function hasElevenLabsAgentId() {
+  return Boolean(env.elevenLabsAgentId);
 }
 
 export function isSupabaseConfigured() {

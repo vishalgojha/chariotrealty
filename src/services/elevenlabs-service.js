@@ -1,9 +1,9 @@
-import { env, isElevenLabsConfigured } from "../config/env.js";
+import { env, hasElevenLabsApiKey } from "../config/env.js";
 import { saveConversation } from "./conversation-service.js";
 
 export async function getConversationDetails(conversationId) {
-  if (!isElevenLabsConfigured()) {
-    throw new Error("ElevenLabs is not configured. Set ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID.");
+  if (!hasElevenLabsApiKey()) {
+    throw new Error("ElevenLabs API access is not configured. Set ELEVENLABS_API_KEY.");
   }
 
   const response = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`, {

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { env, isElevenLabsConfigured, isSupabaseConfigured } from "../config/env.js";
+import { env, hasElevenLabsAgentId, hasElevenLabsApiKey, isSupabaseConfigured } from "../config/env.js";
 
 export const healthRouter = Router();
 
@@ -10,7 +10,8 @@ healthRouter.get("/", (_req, res) => {
     company: "Chariot Realty",
     transportMode: "propai_live_with_elevenlabs_hooks",
     integrations: {
-      elevenLabsConfigured: isElevenLabsConfigured(),
+      elevenLabsApiConfigured: hasElevenLabsApiKey(),
+      elevenLabsAgentIdConfigured: hasElevenLabsAgentId(),
       supabaseConfigured: isSupabaseConfigured()
     },
     toolEndpointProtection: Boolean(env.elevenLabsToolSecret),

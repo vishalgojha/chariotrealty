@@ -150,3 +150,4 @@ npm start
 - Kapil gets special treatment through owner session logic and shortcut handling.
 - `SYSTEM_NUMBER` traffic is recorded but never activates AI.
 - The app can boot before the schema exists, but production behavior depends on Supabase being initialized.
+- `ELEVENLABS_AGENT_ID` is optional in the current implementation; `ELEVENLABS_API_KEY` is the important one for transcript/API features.
