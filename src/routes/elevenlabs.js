@@ -3,7 +3,8 @@ import { env } from "../config/env.js";
 import { elevenLabsAuth } from "../middleware/elevenlabs-auth.js";
 import { getConversationHistory } from "../services/conversation-service.js";
 import { buildChariotAiContext } from "../services/chariot-context-service.js";
-import { getConversationDetails, syncConversationTranscript } from "../services/elevenlabs-service.js";
+import { syncConversationTranscript } from "../services/elevenlabs-service.js";
+import { ingestElevenLabsWebhook } from "../services/elevenlabs-webhook-service.js";
 import { resolveContact } from "../services/contact-service.js";
 import { getOwnerSessionState, touchSession } from "../services/session-service.js";
 import { executeTool } from "../services/tool-service.js";
@@ -17,6 +18,7 @@ elevenLabsRouter.get("/manifest", (_req, res) => {
   res.json({
     transport_mode: "propai_live_chariot_middleware",
     conversation_init_url: "/elevenlabs/conversation-init",
+    client_data_webhook_url: "/elevenlabs/client-data",
     transcript_sync_url: "/elevenlabs/conversations/sync",
     post_call_webhook_url: "/elevenlabs/post-call",
     tools: {
@@ -147,31 +149,17 @@ elevenLabsRouter.post("/conversations/sync", async (req, res, next) => {
 
 elevenLabsRouter.post("/post-call", async (req, res, next) => {
   try {
-    const conversationId =
-      req.body.conversation_id ||
-      req.body.data?.conversation_id ||
-      req.body.event?.conversation_id;
+    const result = await ingestElevenLabsWebhook(req.body || {}, "post_call");
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
 
-    if (!conversationId) {
-      res.status(400).json({ error: "conversation_id is required" });
-      return;
-    }
-
-    const details = await getConversationDetails(conversationId);
-    const result = await syncConversationTranscript({
-      conversationId,
-      phone:
-        req.body.phone ||
-        details.user_id ||
-        details.conversation_initiation_client_data?.dynamic_variables?.user_phone
-    });
-
-    res.json({
-      ok: true,
-      event_type: req.body.type || req.body.event_type || "post_call",
-      conversation_id: conversationId,
-      sync: result
-    });
+elevenLabsRouter.post("/client-data", async (req, res, next) => {
+  try {
+    const result = await ingestElevenLabsWebhook(req.body || {}, "client_data");
+    res.json(result);
   } catch (error) {
     next(error);
   }
