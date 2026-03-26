@@ -70,6 +70,8 @@ Optional hardening:
 
 ```env
 ELEVENLABS_TOOL_SECRET=
+ELEVENLABS_WEBHOOK_SECRETS=
+ELEVENLABS_WEBHOOK_TOLERANCE_SECONDS=300
 ```
 
 ## Database
@@ -151,6 +153,7 @@ Webhook ingestion behavior:
   - stores transcript
   - ingests analysis/data-collection payloads
   - can save broker listing details when present
+  - supports ElevenLabs HMAC verification via `ELEVENLABS_WEBHOOK_SECRETS`
 
 ## Local Run
 
@@ -167,3 +170,4 @@ npm start
 - `SYSTEM_NUMBER` traffic is recorded but never activates AI.
 - The app can boot before the schema exists, but production behavior depends on Supabase being initialized.
 - `ELEVENLABS_AGENT_ID` is optional in the current implementation; `ELEVENLABS_API_KEY` is the important one for transcript/API features.
+- `ELEVENLABS_WEBHOOK_SECRETS` supports a comma-separated list, useful when ElevenLabs gives separate secrets for multiple endpoints.

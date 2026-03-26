@@ -8,6 +8,11 @@ export const env = {
   elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || "",
   elevenLabsAgentId: process.env.ELEVENLABS_AGENT_ID || "",
   elevenLabsToolSecret: process.env.ELEVENLABS_TOOL_SECRET || "",
+  elevenLabsWebhookSecrets: (process.env.ELEVENLABS_WEBHOOK_SECRETS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
+  elevenLabsWebhookToleranceSeconds: Number(process.env.ELEVENLABS_WEBHOOK_TOLERANCE_SECONDS || 300),
   supabaseUrl: process.env.SUPABASE_URL || "",
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   kapilPhone: process.env.KAPIL_PHONE || "9773757759",
