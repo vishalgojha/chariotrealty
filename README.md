@@ -124,6 +124,7 @@ Dynamic variables returned by this service include:
 
 Tool endpoints:
 
+- `/elevenlabs/tools/resolve_contact_context`
 - `/elevenlabs/tools/search_listings`
 - `/elevenlabs/tools/save_listing`
 - `/elevenlabs/tools/get_leads`
@@ -135,6 +136,8 @@ Transcript sync:
 
 - `/elevenlabs/post-call`
 - `/elevenlabs/conversations/sync`
+
+For ElevenLabs WhatsApp specifically, use `resolve_contact_context` as the first server tool and pass the WhatsApp caller ID from ElevenLabs system variables such as `{{system__caller_id}}`.
 
 ## Local Run
 

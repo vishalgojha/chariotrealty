@@ -20,6 +20,10 @@ elevenLabsRouter.get("/manifest", (_req, res) => {
     transcript_sync_url: "/elevenlabs/conversations/sync",
     post_call_webhook_url: "/elevenlabs/post-call",
     tools: {
+      resolve_contact_context: {
+        method: "POST",
+        url: "/elevenlabs/tools/resolve_contact_context"
+      },
       search_listings: {
         method: "POST",
         url: "/elevenlabs/tools/search_listings"

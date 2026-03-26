@@ -37,6 +37,7 @@ export function buildChariotAiContext({ contact, history, source = "direct", own
     },
     instructions: [companyContext, roleInstructions[contact.role] || ""].filter(Boolean).join("\n"),
     tools: [
+      "resolve_contact_context",
       "search_listings",
       "save_listing",
       "get_leads",

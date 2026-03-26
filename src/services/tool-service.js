@@ -1,8 +1,12 @@
 import { getInventorySummary, saveListing, searchListings } from "./listing-service.js";
 import { getLeads, updateLeadStatus } from "./lead-service.js";
 import { scheduleSiteVisit } from "./visit-service.js";
+import { resolveContactContextTool } from "./whatsapp-context-tool.js";
 
 export const toolHandlers = {
+  resolve_contact_context: async (parameters = {}) => {
+    return resolveContactContextTool(parameters);
+  },
   search_listings: async (parameters = {}) => {
     return searchListings(parameters);
   },
