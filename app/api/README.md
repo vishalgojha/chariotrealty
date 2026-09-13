@@ -14,6 +14,7 @@ The API is available under `/api` on the deployed Next.js service.
 - `GET /api/whatsapp/status` — admin-only WhatsMeow connection status.
 - `POST /api/whatsapp/connect` — admin-only start/reconnect for the Chariot WhatsApp device.
 - `POST /api/whatsapp/pair` — admin-only WhatsMeow phone-number pairing flow.
+- `POST /api/whatsapp/reset` — admin-only destructive unlink/reset before pairing a new WhatsApp device.
 - `POST /api/whatsapp/publish` — preview or publish one allowlisted Chariot-owned listing to the configured self-chat, including its image.
 
 Example lead body:
