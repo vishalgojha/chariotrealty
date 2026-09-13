@@ -34,6 +34,16 @@ export async function connectWhatsapp() {
   return payload;
 }
 
+export async function startWhatsappPairing() {
+  const { selfJid } = config();
+  const phone = selfJid.split("@")[0]?.split(":")[0] || "";
+  if (!phone) throw new Error("CHARIOT_WHATSAPP_SELF_JID is not configured");
+  const response = await gateway("/pair-code/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `WhatsMeow pairing returned ${response.status}`);
+  return payload;
+}
+
 export async function publishOwnProperty(propertyId: string, confirm: boolean) {
   const property = mumbaiProperties.find((item) => item.id === propertyId);
   if (!property) throw new Error("Only Chariot-owned properties can be published");
