@@ -17,7 +17,7 @@ export default function AdminPage() {
   const [leadStatus, setLeadStatus] = useState("new");
   const [leadError, setLeadError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [whatsappStatus, setWhatsappStatus] = useState<{ connected?: boolean; connection_state?: string; error?: string } | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState<{ connected?: boolean; connection_state?: string; qr?: string | null; error?: string } | null>(null);
   const [whatsappError, setWhatsappError] = useState("");
   const [publishing, setPublishing] = useState("");
 
