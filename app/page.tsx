@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Category = "residential" | "commercial" | "under-construction";
 
@@ -36,7 +36,7 @@ const properties: Property[] = [
       { label: "Watch Reel", href: "https://www.instagram.com/reel/PLACEHOLDER_TEN_BKC/", icon: "instagram" },
       { label: "Drive Photos", href: "https://drive.google.com/PLACEHOLDER_TEN_BKC_ALBUM", icon: "folder" },
     ],
-    cta: "Request Walkthrough",
+    cta: "Contact Kapil on WhatsApp",
     message: "Hi Kapil, I'm interested in Ten BKC.",
   },
   {
@@ -49,7 +49,7 @@ const properties: Property[] = [
     locale: "",
     specs: [["Carpet", "4,200 sqft"], ["Condition", "Warm Shell"], ["Parking", "6 Reserved"]],
     links: [{ label: "Layout Plan PDF", href: "https://drive.google.com/PLACEHOLDER_GODREJ_LAYOUT", icon: "folder" }],
-    cta: "Request Term Sheet",
+    cta: "Contact Kapil on WhatsApp",
     message: "Hi Kapil, send term sheet for Godrej BKC.",
   },
   {
@@ -65,7 +65,7 @@ const properties: Property[] = [
       { label: "Brochure", href: "https://drive.google.com/PLACEHOLDER_CLEON_BROCHURE", icon: "folder" },
       { label: "Site Reel", href: "https://www.instagram.com/reel/PLACEHOLDER_CLEON_SITE/", icon: "instagram" },
     ],
-    cta: "Get Cost Sheet",
+    cta: "Contact Kapil on WhatsApp",
     message: "Hi Kapil, send cost sheet for Rustomjee Cleon.",
   },
 ];
@@ -105,14 +105,21 @@ function PropertyCard({ property }: { property: Property }) {
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState<"all" | Category>("all");
+  const [liveStats, setLiveStats] = useState({ listings: 0, hubs: 0 });
   const visibleProperties = activeCategory === "all" ? properties : properties.filter((property) => property.category === activeCategory);
+
+  useEffect(() => {
+    Promise.all([fetch("/api/properties").then((response) => response.json()), fetch("/api/markets").then((response) => response.json())])
+      .then(([propertyData, marketData]) => setLiveStats({ listings: propertyData.count ?? propertyData.data?.length ?? 0, hubs: marketData.data?.length ?? 0 }))
+      .catch(() => setLiveStats({ listings: properties.length, hubs: 0 }));
+  }, []);
 
   return (
     <>
       <nav>
         <a className="logo" href="#top">Chariot <span>Realty</span></a>
         <div className="nav-links"><a href="#inventory">Residential</a><a href="#inventory">Commercial</a><a href="#inventory">Under Construction</a></div>
-        <div className="nav-actions"><a href="https://instagram.com/chariotrealty" target="_blank" rel="noreferrer" className="nav-insta"><InstagramIcon />Reels</a><a href={whatsapp} className="nav-cta">WhatsApp Kapil</a></div>
+        <div className="nav-actions"><a href="https://instagram.com/chariotreealty.in" target="_blank" rel="noreferrer" className="nav-insta"><InstagramIcon />@chariotreealty.in</a><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`} className="nav-cta">WhatsApp Kapil</a></div>
       </nav>
 
       <main id="top">
@@ -122,7 +129,7 @@ export default function Home() {
             <h1>Homes &amp; offices for people who don&apos;t have time to <em>search</em>.</h1>
             <p className="sub">Verified prime rentals, corporate workspaces, and direct developer mandates across Bandra and BKC.</p>
             <div className="hero-actions"><a href="#inventory" className="btn-primary">View Inventory</a><a href={whatsapp} className="btn-secondary">Talk to Kapil</a></div>
-            <div className="hero-stats"><div><p className="stat-number">120+</p><p className="stat-label">Units Placed</p></div><div><p className="stat-number">3</p><p className="stat-label">Prime Hubs</p></div><div><p className="stat-number">1</p><p className="stat-label">Direct Contact</p></div></div>
+            <div className="hero-stats"><div><p className="stat-number">{liveStats.listings || "—"}</p><p className="stat-label">Live Listings</p></div><div><p className="stat-number">{liveStats.hubs || "—"}</p><p className="stat-label">Prime Hubs</p></div><div><p className="stat-number">1</p><p className="stat-label">Direct Contact</p></div></div>
           </div>
           <div className="hero-media" aria-label="Modern Bandra residence" />
         </section>
@@ -133,11 +140,11 @@ export default function Home() {
             {(["all", "residential", "commercial", "under-construction"] as const).map((category) => <button key={category} type="button" role="tab" aria-selected={activeCategory === category} className={`filter-btn ${activeCategory === category ? "active" : ""}`} onClick={() => setActiveCategory(category)}>{category === "under-construction" ? "Under Construction" : category[0].toUpperCase() + category.slice(1)}</button>)}
           </div>
           <div className="grid">{visibleProperties.map((property) => <PropertyCard key={property.name} property={property} />)}</div>
-          <div className="insta-strip"><div className="insta-left"><div className="insta-icon-box"><InstagramIcon size={22} /></div><div><h4>Watch Our Weekly Site Walkthroughs</h4><p>Raw uncut tours, lobby reviews, and off-market updates directly from Bandra &amp; BKC.</p></div></div><a href="https://instagram.com/chariotrealty" target="_blank" rel="noreferrer" className="insta-btn">Follow on Instagram →</a></div>
+          <div className="insta-strip"><div className="insta-left"><div className="insta-icon-box"><InstagramIcon size={22} /></div><div><h4>Watch Our Weekly Site Walkthroughs</h4><p>Raw uncut tours, lobby reviews, and off-market updates directly from Bandra &amp; BKC.</p></div></div><a href="https://instagram.com/chariotreealty.in" target="_blank" rel="noreferrer" className="insta-btn">Follow @chariotreealty.in →</a></div>
         </section>
       </main>
 
-      <footer><div className="f-left"><a className="logo" href="#top">Chariot <span>Realty</span></a><p>Bandra West · BKC · Bandra East · Khar · Santacruz</p></div><div className="f-right"><p>Kapil Gopal Ojha · +91 97737 57759</p><p><a href={whatsapp}>WhatsApp</a> · <a href="https://instagram.com/chariotrealty" target="_blank" rel="noreferrer">Instagram</a></p></div></footer>
+      <footer><div className="f-left"><a className="logo" href="#top">Chariot <span>Realty</span></a><p>Bandra West · BKC · Bandra East · Khar · Santacruz</p></div><div className="f-right"><p>Kapil Gopal Ojha · +91 97737 57759</p><p><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`}>WhatsApp</a> · <a href="https://instagram.com/chariotreealty.in" target="_blank" rel="noreferrer">@chariotreealty.in</a></p></div></footer>
     </>
   );
 }
