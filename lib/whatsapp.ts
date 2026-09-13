@@ -29,8 +29,9 @@ export async function whatsappStatus(): Promise<GatewayStatus> {
 
 export async function connectWhatsapp() {
   const response = await gateway("/connect", { method: "POST" });
-  if (!response.ok) throw new Error(`WhatsMeow connect returned ${response.status}`);
-  return response.json();
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `WhatsMeow connect returned ${response.status}`);
+  return payload;
 }
 
 export async function publishOwnProperty(propertyId: string, confirm: boolean) {
