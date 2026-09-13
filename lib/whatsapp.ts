@@ -44,6 +44,13 @@ export async function startWhatsappPairing() {
   return payload;
 }
 
+export async function resetWhatsapp() {
+  const response = await gateway("/reset", { method: "POST" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `WhatsMeow reset returned ${response.status}`);
+  return payload;
+}
+
 export async function publishOwnProperty(propertyId: string, confirm: boolean) {
   const property = mumbaiProperties.find((item) => item.id === propertyId);
   if (!property) throw new Error("Only Chariot-owned properties can be published");
