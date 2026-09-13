@@ -119,7 +119,7 @@ export default function Home() {
       <nav>
         <a className="logo" href="#top">Chariot <span>Realty</span></a>
         <div className="nav-links"><a href="#inventory">Residential</a><a href="#inventory">Commercial</a><a href="#inventory">Under Construction</a></div>
-        <div className="nav-actions"><a href="https://instagram.com/chariotreealty.in" target="_blank" rel="noreferrer" className="nav-insta"><InstagramIcon />@chariotreealty.in</a><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`} className="nav-cta">WhatsApp Kapil</a></div>
+        <div className="nav-actions"><a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer" className="nav-insta"><InstagramIcon />@chariotrealty.in</a><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`} className="nav-cta">WhatsApp Kapil</a></div>
       </nav>
 
       <main id="top">
@@ -140,11 +140,11 @@ export default function Home() {
             {(["all", "residential", "commercial", "under-construction"] as const).map((category) => <button key={category} type="button" role="tab" aria-selected={activeCategory === category} className={`filter-btn ${activeCategory === category ? "active" : ""}`} onClick={() => setActiveCategory(category)}>{category === "under-construction" ? "Under Construction" : category[0].toUpperCase() + category.slice(1)}</button>)}
           </div>
           <div className="grid">{visibleProperties.map((property) => <PropertyCard key={property.name} property={property} />)}</div>
-          <div className="insta-strip"><div className="insta-left"><div className="insta-icon-box"><InstagramIcon size={22} /></div><div><h4>Watch Our Weekly Site Walkthroughs</h4><p>Raw uncut tours, lobby reviews, and off-market updates directly from Bandra &amp; BKC.</p></div></div><a href="https://instagram.com/chariotreealty.in" target="_blank" rel="noreferrer" className="insta-btn">Follow @chariotreealty.in →</a></div>
+          <div className="insta-strip"><div className="insta-left"><div className="insta-icon-box"><InstagramIcon size={22} /></div><div><h4>Watch Our Weekly Site Walkthroughs</h4><p>Raw uncut tours, lobby reviews, and off-market updates directly from Bandra &amp; BKC.</p></div></div><a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer" className="insta-btn">Follow @chariotrealty.in →</a></div>
         </section>
       </main>
 
-      <footer><div className="f-left"><a className="logo" href="#top">Chariot <span>Realty</span></a><p>Bandra West · BKC · Bandra East · Khar · Santacruz</p></div><div className="f-right"><p>Kapil Gopal Ojha · +91 97737 57759</p><p><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`}>WhatsApp</a> · <a href="https://instagram.com/chariotreealty.in" target="_blank" rel="noreferrer">@chariotreealty.in</a></p></div></footer>
+      <footer><div className="f-left"><a className="logo" href="#top">Chariot <span>Realty</span></a><p>Bandra West · BKC · Bandra East · Khar · Santacruz</p></div><div className="f-right"><p>Kapil Gopal Ojha · +91 97737 57759</p><p><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`}>WhatsApp</a> · <a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer">@chariotrealty.in</a></p></div></footer>
     </>
   );
 }
