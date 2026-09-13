@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { saveMumbaiLead } from "@/lib/supabase";
+import { runLeadAutomations } from "@/lib/composio";
 
 type LeadRequest = {
   name?: string;
@@ -48,5 +49,15 @@ export async function POST(request: NextRequest) {
   });
 
   if (!lead.ok) return NextResponse.json({ error: "Lead service is not configured", detail: lead.error }, { status: 503 });
-  return NextResponse.json({ ok: true, leadId: lead.id, message: "Kapil will get back to you shortly." }, { status: 201 });
+  const automation = await runLeadAutomations({
+    leadId: lead.id,
+    name,
+    phone,
+    email: email || null,
+    intent: body.intent || "rent",
+    locality: body.locality?.trim() || null,
+    propertyId: body.propertyId || null,
+    message: body.message?.trim() || null,
+  });
+  return NextResponse.json({ ok: true, leadId: lead.id, automation: { enabled: automation.enabled, results: automation.results.map((result) => ({ action: result.action, status: result.status })) }, message: "Kapil will get back to you shortly." }, { status: 201 });
 }
