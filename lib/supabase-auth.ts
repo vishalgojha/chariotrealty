@@ -30,6 +30,7 @@ export async function getSupabaseUser(accessToken: string): Promise<SupabaseUser
 }
 
 export function isAllowedSupabaseAdmin(user: SupabaseUser) {
-  const allowed = (process.env.SUPABASE_ADMIN_EMAIL || process.env.CHARIOT_OWNER_EMAIL || "").trim().toLowerCase();
-  return Boolean(user.email && allowed && user.email.toLowerCase() === allowed);
+  const allowed = (process.env.SUPABASE_ADMIN_EMAILS || process.env.SUPABASE_ADMIN_EMAIL || process.env.CHARIOT_OWNER_EMAIL || "")
+    .split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
+  return Boolean(user.email && allowed.includes(user.email.toLowerCase()));
 }
