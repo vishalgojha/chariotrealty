@@ -3,7 +3,7 @@ import { requireAdmin } from "@/app/api/leads/admin";
 import { runLeadAutomations } from "@/lib/composio";
 
 export async function POST(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const body = await request.json();
