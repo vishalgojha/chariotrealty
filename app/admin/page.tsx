@@ -7,6 +7,20 @@ type Market = { name: string; positioning: string; transit: string[] };
 type Lead = { id: string; name: string; phone: string; intent: string; locality?: string; property_id?: string; created_at: string; status: string };
 
 const categoryLabels: Record<string, string> = { residential: "Residential", commercial: "Commercial", "under-construction": "New launch" };
+const apiBase = (process.env.NEXT_PUBLIC_API_URL || "https://api.chariotrealty.in").replace(/\/$/, "");
+
+function apiUrl(path: string) {
+  return `${apiBase}${path}`;
+}
+
+async function readJson(response: Response): Promise<Record<string, any>> {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new Error(response.ok ? "The API returned an invalid response." : `API request failed (${response.status}). Check the Chariot API deployment.`);
+  }
+  return response.json();
+}
 
 export default function AdminPage() {
   const [properties, setProperties] = useState<Property[]>([]);
@@ -43,7 +57,7 @@ export default function AdminPage() {
       } catch { window.localStorage.removeItem("chariot_supabase_session"); }
     }
     setAuthReady(true);
-    Promise.all([fetch("/api/properties").then((r) => r.json()), fetch("/api/markets").then((r) => r.json())])
+    Promise.all([fetch(apiUrl("/api/properties")).then(readJson), fetch(apiUrl("/api/markets")).then(readJson)])
       .then(([propertyData, marketData]) => { setProperties(propertyData.data || []); setMarkets(marketData.data || []); })
       .finally(() => setLoading(false));
   }, []);
@@ -65,8 +79,8 @@ export default function AdminPage() {
   async function login(event: FormEvent) {
     event.preventDefault(); setAuthError(""); setAuthLoading(true);
     try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: authEmail, password: authPassword }) });
-      const payload = await response.json();
+      const response = await fetch(apiUrl("/api/auth/login"), { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ email: authEmail, password: authPassword }) });
+      const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || "Could not sign in");
       window.localStorage.setItem("chariot_supabase_session", JSON.stringify(payload));
       setAuthToken(payload.access_token); setAuthPassword("");
@@ -82,16 +96,16 @@ export default function AdminPage() {
   async function loadLeads(event?: FormEvent) {
     event?.preventDefault();
     setLeadError("");
-    const response = await authenticatedFetch(`/api/leads/list?status=${leadStatus}`);
-    const payload = await response.json();
+    const response = await authenticatedFetch(apiUrl(`/api/leads/list?status=${leadStatus}`));
+    const payload = await readJson(response);
     if (!response.ok) return setLeadError(payload.error || "Could not load leads");
     setLeads(payload.data || []);
   }
 
   async function loadWhatsapp() {
     setWhatsappError("");
-    const response = await authenticatedFetch("/api/whatsapp/status");
-    const payload = await response.json();
+    const response = await authenticatedFetch(apiUrl("/api/whatsapp/status"));
+    const payload = await readJson(response);
     if (!response.ok) return setWhatsappError(payload.error || "Could not read WhatsApp status");
     setWhatsappStatus(payload.status || null);
     return payload.status || null;
@@ -103,8 +117,8 @@ export default function AdminPage() {
 
   async function connectWhatsapp() {
     setWhatsappError("");
-    const response = await authenticatedFetch("/api/whatsapp/connect", { method: "POST" });
-    const payload = await response.json();
+    const response = await authenticatedFetch(apiUrl("/api/whatsapp/connect"), { method: "POST" });
+    const payload = await readJson(response);
     if (!response.ok) { showToast(payload.error || "Could not start WhatsApp connection", "error"); return setWhatsappError(payload.error || "Could not start WhatsApp connection"); }
     await loadWhatsapp();
     showToast("WhatsApp connection refreshed");
@@ -113,8 +127,8 @@ export default function AdminPage() {
   async function disconnectWhatsapp() {
     setWhatsappBusy(true); setWhatsappError("");
     try {
-      const response = await authenticatedFetch("/api/whatsapp/disconnect", { method: "POST" });
-      const payload = await response.json();
+      const response = await authenticatedFetch(apiUrl("/api/whatsapp/disconnect"), { method: "POST" });
+      const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || "Could not disconnect WhatsApp");
       await loadWhatsapp();
       showToast("WhatsApp disconnected");
@@ -129,8 +143,8 @@ export default function AdminPage() {
   async function performRemoveWhatsapp() {
     setWhatsappBusy(true); setWhatsappError("");
     try {
-      const response = await authenticatedFetch("/api/whatsapp/remove", { method: "POST" });
-      const payload = await response.json();
+      const response = await authenticatedFetch(apiUrl("/api/whatsapp/remove"), { method: "POST" });
+      const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || "Could not remove WhatsApp number");
       setWhatsappStatus(null);
       showToast("WhatsApp number removed");
@@ -142,8 +156,8 @@ export default function AdminPage() {
     setWhatsappBusy(true); setWhatsappError("");
     try {
       if (whatsappStatus?.connected) throw new Error("WhatsApp is already connected. Pairing is only needed after disconnecting the device.");
-      const response = await authenticatedFetch("/api/whatsapp/pair", { method: "POST" });
-      const payload = await response.json();
+      const response = await authenticatedFetch(apiUrl("/api/whatsapp/pair"), { method: "POST" });
+      const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || "Could not start WhatsApp pairing");
       await waitForPairingCode();
     } catch (error) { setWhatsappError(error instanceof Error ? error.message : "Could not start WhatsApp pairing"); }
@@ -166,12 +180,12 @@ export default function AdminPage() {
   async function performResetAndPairWhatsapp() {
     setWhatsappBusy(true); setWhatsappError("");
     try {
-      const resetResponse = await authenticatedFetch("/api/whatsapp/reset", { method: "POST" });
-      const resetPayload = await resetResponse.json();
+      const resetResponse = await authenticatedFetch(apiUrl("/api/whatsapp/reset"), { method: "POST" });
+      const resetPayload = await readJson(resetResponse);
       if (!resetResponse.ok) throw new Error(resetPayload.error || "Could not reset WhatsMeow device");
       await new Promise((resolve) => window.setTimeout(resolve, 1200));
-      const pairResponse = await authenticatedFetch("/api/whatsapp/pair", { method: "POST" });
-      const pairPayload = await pairResponse.json();
+      const pairResponse = await authenticatedFetch(apiUrl("/api/whatsapp/pair"), { method: "POST" });
+      const pairPayload = await readJson(pairResponse);
       if (!pairResponse.ok) throw new Error(pairPayload.error || "Could not start WhatsMeow pairing");
       await waitForPairingCode();
       showToast("Pairing flow started");
@@ -189,8 +203,8 @@ export default function AdminPage() {
   async function publishListing(propertyId: string) {
     if (!window.confirm("Post this Chariot-owned listing and image to your WhatsApp self-chat?")) return;
     setPublishing(propertyId); setWhatsappError("");
-    const response = await authenticatedFetch("/api/whatsapp/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ propertyId, confirm: true }) });
-    const payload = await response.json();
+    const response = await authenticatedFetch(apiUrl("/api/whatsapp/publish"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ propertyId, confirm: true }) });
+    const payload = await readJson(response);
     if (!response.ok) setWhatsappError(payload.error || "Could not publish listing");
     setPublishing("");
   }
