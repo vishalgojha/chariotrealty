@@ -34,6 +34,13 @@ export async function connectWhatsapp() {
   return payload;
 }
 
+export async function disconnectWhatsapp() {
+  const response = await gateway("/disconnect", { method: "POST" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `WhatsMeow disconnect returned ${response.status}`);
+  return payload;
+}
+
 export async function startWhatsappPairing() {
   const { selfJid } = config();
   const phone = selfJid.split("@")[0]?.split(":")[0] || "";
@@ -48,6 +55,13 @@ export async function resetWhatsapp() {
   const response = await gateway("/reset", { method: "POST" });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || `WhatsMeow reset returned ${response.status}`);
+  return payload;
+}
+
+export async function removeWhatsapp() {
+  const response = await gateway("/delete-session", { method: "POST" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `WhatsMeow remove returned ${response.status}`);
   return payload;
 }
 
