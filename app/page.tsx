@@ -14,7 +14,7 @@ type Property = {
   tag: string;
   locale: string;
   specs: [string, string][];
-  links: { label: string; href: string; icon: "folder" | "instagram" }[];
+  links: { label: string; href?: string; icon: "folder" | "instagram" }[];
   cta: string;
   message: string;
 };
@@ -80,6 +80,7 @@ function FolderIcon() {
 
 function PropertyCard({ property }: { property: Property }) {
   const message = encodeURIComponent(property.message);
+  const availableLinks = property.links.filter((link) => link.href && !link.href.includes("PLACEHOLDER"));
   return (
     <article className="card">
       <div className={`card-media ${property.image ? "" : "private"}`} style={property.image ? { backgroundImage: `url('${property.image}')` } : undefined}>
@@ -94,9 +95,9 @@ function PropertyCard({ property }: { property: Property }) {
         <div className="specs">
           {property.specs.map(([key, value]) => <div key={key}><p className="spec-key">{key}</p><p className="spec-value">{value}</p></div>)}
         </div>
-        <div className="media-links">
-          {property.links.map((link) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="media-link-btn">{link.icon === "folder" ? <FolderIcon /> : <InstagramIcon size={12} />}{link.label}</a>)}
-        </div>
+        {availableLinks.length > 0 && <div className="media-links">
+          {availableLinks.map((link) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="media-link-btn">{link.icon === "folder" ? <FolderIcon /> : <InstagramIcon size={12} />}{link.label}</a>)}
+        </div>}
         <a href={`${whatsapp}?text=${message}`} className="card-cta">{property.cta}</a>
       </div>
     </article>
