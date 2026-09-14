@@ -43,6 +43,17 @@ export default function AdminPage() {
 
   const filteredProperties = useMemo(() => properties.filter((property) => `${property.name} ${property.locality} ${property.category}`.toLowerCase().includes(query.toLowerCase())), [properties, query]);
   const authHeaders = (): Record<string, string> => authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    const response = await fetch(input, { ...init, headers: { ...authHeaders(), ...(init.headers || {}) } });
+    if (response.status === 401) {
+      window.localStorage.removeItem("chariot_supabase_session");
+      setAuthToken("");
+      setWhatsappStatus(null);
+      setLeads([]);
+      setAuthError("Your secure session expired. Please sign in again.");
+    }
+    return response;
+  }
 
   async function login(event: FormEvent) {
     event.preventDefault(); setAuthError(""); setAuthLoading(true);
@@ -64,7 +75,7 @@ export default function AdminPage() {
   async function loadLeads(event?: FormEvent) {
     event?.preventDefault();
     setLeadError("");
-    const response = await fetch(`/api/leads/list?status=${leadStatus}`, { headers: authHeaders() });
+    const response = await authenticatedFetch(`/api/leads/list?status=${leadStatus}`);
     const payload = await response.json();
     if (!response.ok) return setLeadError(payload.error || "Could not load leads");
     setLeads(payload.data || []);
@@ -72,7 +83,7 @@ export default function AdminPage() {
 
   async function loadWhatsapp() {
     setWhatsappError("");
-    const response = await fetch("/api/whatsapp/status", { headers: authHeaders() });
+    const response = await authenticatedFetch("/api/whatsapp/status");
     const payload = await response.json();
     if (!response.ok) return setWhatsappError(payload.error || "Could not read WhatsApp status");
     setWhatsappStatus(payload.status || null);
@@ -84,7 +95,7 @@ export default function AdminPage() {
 
   async function connectWhatsapp() {
     setWhatsappError("");
-    const response = await fetch("/api/whatsapp/connect", { method: "POST", headers: authHeaders() });
+    const response = await authenticatedFetch("/api/whatsapp/connect", { method: "POST" });
     const payload = await response.json();
     if (!response.ok) return setWhatsappError(payload.error || "Could not start WhatsApp connection");
     await loadWhatsapp();
@@ -93,7 +104,7 @@ export default function AdminPage() {
   async function pairWhatsapp() {
     setWhatsappError("");
     if (whatsappStatus?.connected) return setWhatsappError("WhatsApp is already connected. Pairing is only needed after disconnecting the device.");
-    const response = await fetch("/api/whatsapp/pair", { method: "POST", headers: authHeaders() });
+    const response = await authenticatedFetch("/api/whatsapp/pair", { method: "POST" });
     const payload = await response.json();
     if (!response.ok) return setWhatsappError(payload.error || "Could not start WhatsApp pairing");
     await loadWhatsapp();
@@ -103,11 +114,11 @@ export default function AdminPage() {
     if (!window.confirm("This will unlink the current WhatsMeow device from WhatsApp and start a new pairing flow. Continue?")) return;
     setWhatsappBusy(true); setWhatsappError("");
     try {
-      const resetResponse = await fetch("/api/whatsapp/reset", { method: "POST", headers: authHeaders() });
+      const resetResponse = await authenticatedFetch("/api/whatsapp/reset", { method: "POST" });
       const resetPayload = await resetResponse.json();
       if (!resetResponse.ok) throw new Error(resetPayload.error || "Could not reset WhatsMeow device");
       await new Promise((resolve) => window.setTimeout(resolve, 1200));
-      const pairResponse = await fetch("/api/whatsapp/pair", { method: "POST", headers: authHeaders() });
+      const pairResponse = await authenticatedFetch("/api/whatsapp/pair", { method: "POST" });
       const pairPayload = await pairResponse.json();
       if (!pairResponse.ok) throw new Error(pairPayload.error || "Could not start WhatsMeow pairing");
       await loadWhatsapp();
@@ -118,7 +129,7 @@ export default function AdminPage() {
   async function publishListing(propertyId: string) {
     if (!window.confirm("Post this Chariot-owned listing and image to your WhatsApp self-chat?")) return;
     setPublishing(propertyId); setWhatsappError("");
-    const response = await fetch("/api/whatsapp/publish", { method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ propertyId, confirm: true }) });
+    const response = await authenticatedFetch("/api/whatsapp/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ propertyId, confirm: true }) });
     const payload = await response.json();
     if (!response.ok) setWhatsappError(payload.error || "Could not publish listing");
     setPublishing("");
