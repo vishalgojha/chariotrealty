@@ -26,6 +26,13 @@ export default function AdminPage() {
   const [whatsappError, setWhatsappError] = useState("");
   const [whatsappBusy, setWhatsappBusy] = useState(false);
   const [publishing, setPublishing] = useState("");
+  const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ kind: "reset" | "remove"; title: string; message: string } | null>(null);
+
+  function showToast(message: string, tone: "success" | "error" = "success") {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(null), 4200);
+  }
 
   useEffect(() => {
     const saved = window.localStorage.getItem("chariot_supabase_session");
@@ -98,8 +105,9 @@ export default function AdminPage() {
     setWhatsappError("");
     const response = await authenticatedFetch("/api/whatsapp/connect", { method: "POST" });
     const payload = await response.json();
-    if (!response.ok) return setWhatsappError(payload.error || "Could not start WhatsApp connection");
+    if (!response.ok) { showToast(payload.error || "Could not start WhatsApp connection", "error"); return setWhatsappError(payload.error || "Could not start WhatsApp connection"); }
     await loadWhatsapp();
+    showToast("WhatsApp connection refreshed");
   }
 
   async function disconnectWhatsapp() {
@@ -109,19 +117,24 @@ export default function AdminPage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not disconnect WhatsApp");
       await loadWhatsapp();
-    } catch (error) { setWhatsappError(error instanceof Error ? error.message : "Could not disconnect WhatsApp"); }
+      showToast("WhatsApp disconnected");
+    } catch (error) { const message = error instanceof Error ? error.message : "Could not disconnect WhatsApp"; showToast(message, "error"); setWhatsappError(message); }
     finally { setWhatsappBusy(false); }
   }
 
-  async function removeWhatsapp() {
-    if (!window.confirm("Remove this Chariot WhatsApp number and its saved WhatsMeow device session? You will need a new pairing code to use it again.")) return;
+  function removeWhatsapp() {
+    setConfirmDialog({ kind: "remove", title: "Remove WhatsApp number?", message: "This removes the saved WhatsMeow device session. You will need a new pairing code to use this number again." });
+  }
+
+  async function performRemoveWhatsapp() {
     setWhatsappBusy(true); setWhatsappError("");
     try {
       const response = await authenticatedFetch("/api/whatsapp/remove", { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not remove WhatsApp number");
       setWhatsappStatus(null);
-    } catch (error) { setWhatsappError(error instanceof Error ? error.message : "Could not remove WhatsApp number"); }
+      showToast("WhatsApp number removed");
+    } catch (error) { const message = error instanceof Error ? error.message : "Could not remove WhatsApp number"; showToast(message, "error"); setWhatsappError(message); }
     finally { setWhatsappBusy(false); }
   }
 
@@ -146,8 +159,11 @@ export default function AdminPage() {
     setWhatsappError("WhatsApp did not return a pairing code within 45 seconds. Click Refresh status or try again.");
   }
 
-  async function resetAndPairWhatsapp() {
-    if (!window.confirm("This will unlink the current WhatsMeow device from WhatsApp and start a new pairing flow. Continue?")) return;
+  function resetAndPairWhatsapp() {
+    setConfirmDialog({ kind: "reset", title: "Reset and re-pair WhatsApp?", message: "This unlinks the current WhatsMeow device and starts a new pairing flow. Keep this page open for the pairing code." });
+  }
+
+  async function performResetAndPairWhatsapp() {
     setWhatsappBusy(true); setWhatsappError("");
     try {
       const resetResponse = await authenticatedFetch("/api/whatsapp/reset", { method: "POST" });
@@ -158,8 +174,16 @@ export default function AdminPage() {
       const pairPayload = await pairResponse.json();
       if (!pairResponse.ok) throw new Error(pairPayload.error || "Could not start WhatsMeow pairing");
       await waitForPairingCode();
-    } catch (error) { setWhatsappError(error instanceof Error ? error.message : "WhatsMeow pairing failed"); }
+      showToast("Pairing flow started");
+    } catch (error) { const message = error instanceof Error ? error.message : "WhatsMeow pairing failed"; showToast(message, "error"); setWhatsappError(message); }
     finally { setWhatsappBusy(false); }
+  }
+
+  async function confirmDestructiveAction() {
+    const action = confirmDialog?.kind;
+    setConfirmDialog(null);
+    if (action === "reset") await performResetAndPairWhatsapp();
+    if (action === "remove") await performRemoveWhatsapp();
   }
 
   async function publishListing(propertyId: string) {
@@ -176,6 +200,8 @@ export default function AdminPage() {
 
   return (
     <main className="admin-shell">
+      {toast && <div className={`app-toast ${toast.tone}`} role="status"><span>{toast.tone === "success" ? "✓" : "!"}</span>{toast.message}</div>}
+      {confirmDialog && <div className="confirm-backdrop" role="presentation"><div className="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><p className="eyebrow">WhatsApp control</p><h2 id="confirm-title">{confirmDialog.title}</h2><p>{confirmDialog.message}</p><div className="confirm-actions"><button type="button" className="light-button" onClick={() => setConfirmDialog(null)}>Cancel</button><button type="button" className="danger-button" onClick={confirmDestructiveAction}>Continue</button></div></div></div>}
       <header className="admin-header"><div><p className="eyebrow">Chariot Realty · Mumbai</p><h1>Market desk</h1><p className="admin-muted">Your daily view of Bandra, BKC and the western suburbs.</p></div><div className="header-actions"><span className="signed-in">Supabase secured</span><button type="button" className="back-link" onClick={logout}>Sign out</button><a href="/" className="back-link">← Public site</a></div></header>
       <section className="metric-grid"><div className="metric-card"><span>Live inventory</span><strong>{loading ? "—" : properties.length}</strong><small>verified opportunities</small></div><div className="metric-card"><span>Micro-markets</span><strong>{markets.length || "—"}</strong><small>local knowledge hubs</small></div><div className="metric-card accent"><span>Focus area</span><strong>BKC</strong><small>high-intent demand zone</small></div></section>
       <section className="admin-section whatsapp-studio"><div className="section-title"><div><p className="eyebrow">Private publishing</p><h2>WhatsApp self-chat studio</h2><p className="admin-muted">Send your listing details and images from WhatsApp self-chat. Confirmed posts will appear on the public website.</p></div></div><div className="whatsapp-status"><span className={`status-dot ${whatsappStatus?.connected ? "live" : ""}`} />{whatsappStatus?.connected ? `Connected${whatsappStatus.connection_state ? ` · ${whatsappStatus.connection_state}` : ""}` : whatsappStatus?.error || "Private gateway status not checked"}</div><div className="whatsapp-controls"><div><span>Engine</span><strong>WhatsMeow · PropAI gateway</strong></div><div><span>Phone</span><strong>{whatsappStatus?.phone_number || "Not paired"}</strong></div><div><span>Broker</span><strong>{whatsappStatus?.broker_id || "chariot-realty"}</strong></div><div className="whatsapp-control-actions"><button type="button" className="dark-button" onClick={loadWhatsapp} disabled={whatsappBusy}>Refresh status</button><button type="button" className="light-button" onClick={connectWhatsapp} disabled={whatsappBusy || whatsappStatus?.connected}>Reconnect WhatsApp</button><button type="button" className="light-button" onClick={pairWhatsapp} disabled={whatsappBusy || whatsappStatus?.connected}>{whatsappStatus?.connected ? "Pairing after reset" : whatsappBusy ? "Waiting for code…" : "Request pairing code"}</button><button type="button" className="danger-button" onClick={resetAndPairWhatsapp} disabled={whatsappBusy}>{whatsappBusy ? "Waiting for code…" : "Reset & re-pair"}</button><button type="button" className="danger-button" onClick={disconnectWhatsapp} disabled={whatsappBusy || !whatsappStatus?.connected}>Disconnect</button><button type="button" className="danger-button" onClick={removeWhatsapp} disabled={whatsappBusy}>Remove number</button></div></div>{whatsappBusy && !whatsappStatus?.connected && !whatsappStatus?.pairing_code && <div className="pairing-panel"><p className="pairing-note">WhatsMeow is connecting securely. The pairing code will appear here automatically—keep this page open.</p></div>}{whatsappStatus?.pairing_code && <div className="pairing-panel"><p className="pairing-note">Enter this WhatsApp pairing code on the phone: WhatsApp → Linked devices → Link with phone number.</p><strong className="pairing-code">{whatsappStatus.pairing_code}</strong></div>}{whatsappStatus?.qr && <div className="pairing-panel"><p className="pairing-note">WhatsApp is waiting for pairing. Scan this QR from the PropAI WhatsMeow gateway.</p><code>{whatsappStatus.qr}</code></div>}{whatsappError && <p className="error-note">{whatsappError}</p>}<div className="empty-panel"><span className="empty-orb">✦</span><div><strong>Publishing is controlled from your WhatsApp self-chat.</strong><p>Send the property text and photos there, review the draft, then reply “post it” to publish it on Chariot Realty.</p></div></div></section>
