@@ -4,6 +4,7 @@ function authConfig() {
   return {
     url: (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, ""),
     anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "",
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   };
 }
 
@@ -36,8 +37,35 @@ export async function refreshSupabaseSession(refreshToken: string) {
 }
 
 export async function requestSupabasePasswordReset(email: string) {
-  const { url, anonKey } = authConfig();
+  const { url, anonKey, serviceRoleKey } = authConfig();
+  const resendKey = process.env.RESEND_API_KEY || "";
   if (!url || !anonKey) throw new Error("Supabase Auth is not configured");
+
+  if (serviceRoleKey && resendKey) {
+    const linkResponse = await fetch(`${url}/auth/v1/admin/generate_link`, {
+      method: "POST",
+      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "recovery", email, redirect_to: "https://app.chariotrealty.in/admin?reset=1" }),
+      cache: "no-store",
+    });
+    const linkPayload = await linkResponse.json().catch(() => ({}));
+    if (!linkResponse.ok || !linkPayload.action_link) throw new Error(linkPayload.msg || linkPayload.error_description || "Could not create password reset link");
+
+    const mailResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM_EMAIL || "Chariot Realty <onboarding@resend.dev>",
+        to: [email],
+        subject: "Reset your Chariot Realty password",
+        html: `<p>Use the secure link below to set a new Chariot Realty password:</p><p><a href="${linkPayload.action_link}">Reset password</a></p><p>This link expires soon. If you did not request this, you can ignore this email.</p>`,
+      }),
+      cache: "no-store",
+    });
+    if (!mailResponse.ok) { const payload = await mailResponse.json().catch(() => ({})); throw new Error(payload.message || "Could not send password reset email"); }
+    return;
+  }
+
   const response = await fetch(`${url}/auth/v1/recover`, { method: "POST", headers: { apikey: anonKey, "Content-Type": "application/json" }, body: JSON.stringify({ email, redirect_to: "https://app.chariotrealty.in/admin?reset=1" }), cache: "no-store" });
   if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.msg || payload.error_description || "Could not send password reset email"); }
 }
