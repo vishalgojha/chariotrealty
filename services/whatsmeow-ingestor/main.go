@@ -1,0 +1,3586 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"crypto/hmac"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"io"
+	"log"
+	"math/rand"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waWeb"
+	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
+	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
+)
+
+var (
+	databaseURL          = resolveDatabaseURL()
+	webhookURL           = getEnv("PROPAI_WEBHOOK_URL", "https://api.propai.live/webhook")
+	apiURL               = getEnv("PROPAI_API_URL", "https://api.propai.live")
+	extractionTriggerURL = getEnv("PROPAI_EXTRACTION_TRIGGER_URL", apiURL+"/trigger-extraction")
+	instanceName         = getEnv("PROPAI_INSTANCE_NAME", "propai-whatsmeow")
+	sendPort             = getEnv("PROPAI_SEND_PORT", "3001")
+	statusClient         = &http.Client{Timeout: 5 * time.Second}
+)
+
+// ── Status ──────────────────────────────────────────────────────────────────
+
+type Status struct {
+	BrokerID        string `json:"broker_id,omitempty"`
+	Connected       bool   `json:"connected"`
+	ConnectionState string `json:"connection_state"`
+	QR              string `json:"qr,omitempty"`
+	QRAvailable     bool   `json:"qr_available,omitempty"`
+	PairingCode     string `json:"pairing_code,omitempty"`
+	PairingPhone    string `json:"pairing_phone,omitempty"`
+	// PairingWindowExpiresAt is the end of WhatsMeow's documented 160-second
+	// login websocket window. PairPhone's exact code expiry is intentionally
+	// undocumented, so clients must label this as the session window rather
+	// than claiming an exact code lifetime.
+	PairingWindowExpiresAt string `json:"pairing_window_expires_at,omitempty"`
+	// PairingError is retained for the short-lived code-pairing flow so an
+	// upstream WhatsApp rejection (especially rate-overlimit) cannot be
+	// overwritten by a reconnect event before the dashboard polls it.
+	PairingError          string            `json:"pairing_error,omitempty"`
+	PhoneNumber           string            `json:"phone_number,omitempty"`
+	DisplayName           string            `json:"display_name,omitempty"`
+	InstanceName          string            `json:"instance_name,omitempty"`
+	ConnectedSince        string            `json:"connected_since,omitempty"`
+	LastMessageAt         string            `json:"last_message_at,omitempty"`
+	DisconnectReason      int               `json:"disconnect_reason,omitempty"`
+	SendPort              int               `json:"send_port,omitempty"`
+	ReconnectCount        int               `json:"reconnect_count,omitempty"`
+	ConsecutiveFailures   int               `json:"consecutive_failures,omitempty"`
+	TotalMessagesReceived int64             `json:"total_messages_received,omitempty"`
+	TotalOutgoing         int64             `json:"total_outgoing,omitempty"`
+	TotalLocations        int64             `json:"total_locations,omitempty"`
+	TotalContacts         int64             `json:"total_contacts,omitempty"`
+	TotalReactions        int64             `json:"total_reactions,omitempty"`
+	MessageTypeCounts     map[string]int64  `json:"message_type_counts,omitempty"`
+	LastSeenByType        map[string]string `json:"last_seen_by_type,omitempty"`
+	LastDisconnectAt      string            `json:"last_disconnect_at,omitempty"`
+	SocketState           string            `json:"socket_state,omitempty"`
+	HeartbeatAt           string            `json:"heartbeat_at,omitempty"`
+}
+
+// ── Broker session ─────────────────────────────────────────────────────────
+
+type BrokerSession struct {
+	mu                sync.RWMutex
+	statusPostMu      sync.Mutex
+	lastStatusPost    time.Time
+	lastPostedState   string
+	lastPostedCode    string
+	groupSyncMu       sync.Mutex
+	groupSyncRunning  bool
+	selfChatMu        sync.Mutex // Keep self-chat replies ordered per WhatsApp connection.
+	selfChatCancelMu  sync.Mutex
+	selfChatCancel    context.CancelFunc
+	brokerID          string
+	client            *whatsmeow.Client
+	device            *store.Device
+	status            Status
+	ctx               context.Context
+	cancel            context.CancelFunc
+	disconnected      chan struct{}
+	disconnectOnce    func() struct{}
+	lockConn          *sql.Conn
+	lockReleaseOnce   sync.Once
+	reconnectFailures int
+	reconnectCount    int
+	totalMessages     int64
+	totalOutgoing     int64
+	totalLocations    int64
+	totalContacts     int64
+	totalReactions    int64
+	totalByType       map[string]int64
+	lastSeenByType    map[string]time.Time
+	statusFile        string
+	pairingMode       string // "qr" or "code"
+	pairingPhone      string // phone number for code pairing
+	resetting         bool   // suppress stale events from a session being wiped
+}
+
+func (s *BrokerSession) getStatus() Status {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.status
+}
+
+func (s *BrokerSession) setStatus(st Status) {
+	s.mu.Lock()
+	// Reset can race late Connected/heartbeat events from the old client. Those
+	// events must never bring a wiped session back to "Connected" in the API.
+	if s.resetting && st.Connected {
+		st.Connected = false
+		st.ConnectionState = "pairing_required"
+		st.SocketState = "closed"
+		st.QR = ""
+		st.QRAvailable = false
+		st.PairingCode = ""
+	}
+	// Preserve current values for fields not explicitly set in the new status
+	cur := s.status
+	if st.PhoneNumber == "" {
+		st.PhoneNumber = cur.PhoneNumber
+	}
+	if st.DisplayName == "" {
+		st.DisplayName = cur.DisplayName
+	}
+	if st.ConnectedSince == "" {
+		st.ConnectedSince = cur.ConnectedSince
+	}
+	if st.LastMessageAt == "" {
+		st.LastMessageAt = cur.LastMessageAt
+	}
+	if st.LastDisconnectAt == "" {
+		st.LastDisconnectAt = cur.LastDisconnectAt
+	}
+	if st.HeartbeatAt == "" {
+		st.HeartbeatAt = cur.HeartbeatAt
+	}
+	if st.ConnectionState == "pairing_requested" || st.ConnectionState == "open" {
+		// A fresh attempt or a successful pair clears an earlier attempt's
+		// terminal error.
+		st.PairingError = ""
+	} else if st.PairingError == "" {
+		st.PairingError = cur.PairingError
+	}
+	st.ReconnectCount = s.reconnectCount
+	st.ConsecutiveFailures = s.reconnectFailures
+	st.TotalMessagesReceived = s.totalMessages
+	st.TotalOutgoing = s.totalOutgoing
+	st.TotalLocations = s.totalLocations
+	st.TotalContacts = s.totalContacts
+	st.TotalReactions = s.totalReactions
+	typeCounts := make(map[string]int64, len(s.totalByType))
+	for k, v := range s.totalByType {
+		typeCounts[k] = v
+	}
+	st.MessageTypeCounts = typeCounts
+	lastSeen := make(map[string]string, len(s.lastSeenByType))
+	for k, v := range s.lastSeenByType {
+		if !v.IsZero() {
+			lastSeen[k] = v.UTC().Format(time.RFC3339)
+		}
+	}
+	st.LastSeenByType = lastSeen
+	st.BrokerID = s.brokerID
+	st.InstanceName = instanceName
+	st.SendPort = parsePort(sendPort)
+	s.status = st
+	b, err := json.MarshalIndent(st, "", "  ")
+	s.mu.Unlock()
+
+	if err != nil {
+		log.Printf("[broker %s] error marshalling status: %v", s.brokerID, err)
+		return
+	}
+	if err := os.WriteFile(s.statusFile, b, 0644); err != nil {
+		log.Printf("[broker %s] error writing status file: %v", s.brokerID, err)
+	}
+	s.postStatus(st)
+}
+
+func (s *BrokerSession) postStatus(st Status) {
+	s.statusPostMu.Lock()
+	stateKey := fmt.Sprintf(
+		"%t|%s|%s|%s",
+		st.Connected,
+		st.ConnectionState,
+		st.PhoneNumber,
+		st.DisplayName,
+	)
+	importantChange := stateKey != s.lastPostedState || st.PairingCode != s.lastPostedCode
+	if !importantChange && time.Since(s.lastStatusPost) < 30*time.Second {
+		s.statusPostMu.Unlock()
+		return
+	}
+	s.lastStatusPost = time.Now()
+	s.lastPostedState = stateKey
+	s.lastPostedCode = st.PairingCode
+	s.statusPostMu.Unlock()
+
+	b, _ := json.Marshal(st)
+	req, err := http.NewRequest(http.MethodPost, apiURL+"/api/sync/status", strings.NewReader(string(b)))
+	if err != nil {
+		log.Printf("[broker %s] error building status request: %v", s.brokerID, err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token := internalServiceToken(); token != "" {
+		req.Header.Set("X-PropAI-Internal-Token", token)
+	}
+	resp, err := statusClient.Do(req)
+	if err != nil {
+		log.Printf("[broker %s] error posting status: %v", s.brokerID, err)
+		return
+	}
+	resp.Body.Close()
+}
+
+func (s *BrokerSession) clearDevice() error {
+	if s.client != nil && s.client.Store.ID != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if err := s.client.Store.Delete(ctx); err != nil {
+			log.Printf("[broker %s] error deleting device: %v", s.brokerID, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// unlinkAndClearDevice revokes the linked device at WhatsApp before deleting
+// local credentials. Deleting the local store alone leaves the old companion
+// active on WhatsApp, which can retain stale Signal counters and break later
+// self-chat sends after a seemingly fresh pair.
+func (s *BrokerSession) unlinkAndClearDevice() (bool, error) {
+	if s.client != nil && s.client.Store.ID != nil && s.client.IsConnected() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := s.client.Logout(ctx); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	// A previous reset may already have removed the companion and left this
+	// in-memory session waiting for a new QR/pairing code. That is a confirmed
+	// clean state, not an error: make Reset idempotent so a retry can continue
+	// into pairing instead of surfacing a misleading 502.
+	if err := s.clearDevice(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *BrokerSession) releaseLock() {
+	s.lockReleaseOnce.Do(func() {
+		if s.lockConn == nil {
+			return
+		}
+		releaseBrokerLockConn(s.lockConn, s.brokerID)
+		s.lockConn = nil
+	})
+}
+
+// ── Session manager ────────────────────────────────────────────────────────
+
+type SessionManager struct {
+	mu        sync.RWMutex
+	sessions  map[string]*BrokerSession
+	container *sqlstore.Container
+	db        *sql.DB
+	sessionWg sync.WaitGroup
+}
+
+type inboxThreadCursor struct {
+	GroupName  string                 `json:"group_name"`
+	SenderJID  string                 `json:"sender_jid"`
+	Timestamp  string                 `json:"timestamp"`
+	RawPayload map[string]interface{} `json:"raw_payload"`
+}
+
+type sendMessageRequest struct {
+	BrokerID          string `json:"brokerId"`
+	RemoteJID         string `json:"remoteJid"`
+	Text              string `json:"text"`
+	QuotedMessageID   string `json:"quotedMessageId"`
+	QuotedRemoteJID   string `json:"quotedRemoteJid"`
+	QuotedParticipant string `json:"quotedParticipant"`
+	QuotedFromMe      bool   `json:"quotedFromMe"`
+}
+
+type selfChatAgentRequest struct {
+	BrokerID  string        `json:"broker_id"`
+	Text      string        `json:"text"`
+	MessageID string        `json:"message_id"`
+	SenderJID string        `json:"sender_jid"`
+	Media     *inboundMedia `json:"media,omitempty"`
+}
+
+type selfChatAgentResponse struct {
+	Reply   string `json:"reply"`
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+func NewSessionManager(container *sqlstore.Container, db *sql.DB) *SessionManager {
+	return &SessionManager{
+		sessions:  make(map[string]*BrokerSession),
+		container: container,
+		db:        db,
+	}
+}
+
+func (sm *SessionManager) Get(brokerID string) *BrokerSession {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.sessions[brokerID]
+}
+
+func (sm *SessionManager) List() []*BrokerSession {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	out := make([]*BrokerSession, 0, len(sm.sessions))
+	for _, s := range sm.sessions {
+		out = append(out, s)
+	}
+	return out
+}
+
+func (sm *SessionManager) Remove(brokerID string) {
+	sm.mu.Lock()
+	session := sm.sessions[brokerID]
+	delete(sm.sessions, brokerID)
+	sm.mu.Unlock()
+	if session != nil {
+		session.releaseLock()
+	}
+}
+
+func brokerLockKey(brokerID string) int64 {
+	hasher := fnv.New64a()
+	_, _ = hasher.Write([]byte(brokerID))
+	return int64(hasher.Sum64() & ^(uint64(1) << 63))
+}
+
+func pairingErrorMessage(err error) string {
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(message, "429") || strings.Contains(message, "rate-overlimit") || strings.Contains(message, "rate limit") {
+		return "WhatsApp temporarily limited pairing-code requests for this number. Do not reset or retry now; wait at least 30 minutes, then request one new code."
+	}
+	return "WhatsApp could not issue a pairing code. Do not reset repeatedly; wait a minute and request one new code."
+}
+
+func (s *BrokerSession) failCodePairing(message string) {
+	s.mu.Lock()
+	s.pairingMode = ""
+	s.pairingPhone = ""
+	s.mu.Unlock()
+	s.setStatus(Status{
+		Connected:       false,
+		ConnectionState: "pairing_error",
+		SocketState:     "closed",
+		PairingError:    message,
+	})
+}
+
+func (sm *SessionManager) acquireBrokerLock(ctx context.Context, brokerID string) (*sql.Conn, bool, error) {
+	conn, err := sm.db.Conn(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	var locked bool
+	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", brokerLockKey(brokerID)).Scan(&locked); err != nil {
+		_ = conn.Close()
+		return nil, false, err
+	}
+	if !locked {
+		_ = conn.Close()
+		return nil, false, nil
+	}
+	return conn, true, nil
+}
+
+func releaseBrokerLockConn(conn *sql.Conn, brokerID string) {
+	if conn == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", brokerLockKey(brokerID)); err != nil {
+		log.Printf("[broker %s] error releasing session lock: %v", brokerID, err)
+	}
+	if err := conn.Close(); err != nil {
+		log.Printf("[broker %s] error closing session lock connection: %v", brokerID, err)
+	}
+}
+
+func (sm *SessionManager) startOrGet(
+	brokerID string,
+	configureBeforeStart func(*BrokerSession),
+) *BrokerSession {
+	// Only protect the in-memory map with sm.mu. The previous implementation
+	// held this global mutex while waiting on Supabase for a connection, an
+	// advisory lock, and device records. One slow database operation therefore
+	// blocked every session endpoint, including pair-code/start, until both API
+	// aliases timed out.
+	sm.mu.Lock()
+	existing := sm.sessions[brokerID]
+	sm.mu.Unlock()
+	if existing != nil {
+		if configureBeforeStart != nil {
+			configureBeforeStart(existing)
+		}
+		return existing
+	}
+
+	// Bound all database setup below the API's ten-second ingestor timeout. A
+	// stalled database must fail this broker's attempt, never wedge the global
+	// session registry indefinitely.
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	lockConn, locked, err := sm.acquireBrokerLock(ctx, brokerID)
+	if err != nil {
+		log.Printf("[broker %s] error acquiring session lock: %v", brokerID, err)
+		return nil
+	}
+	if !locked {
+		log.Printf("[broker %s] session lock already held by another ingestor instance", brokerID)
+		return nil
+	}
+
+	// Check if we have a stored device mapping
+	deviceJID, err := sm.lookupDeviceJID(ctx, brokerID)
+	if err != nil {
+		log.Printf("[broker %s] error looking up device mapping: %v", brokerID, err)
+		releaseBrokerLockConn(lockConn, brokerID)
+		return nil
+	}
+	var device *store.Device
+	if deviceJID != "" {
+		jid, err := types.ParseJID(deviceJID)
+		if err == nil {
+			device, err = sm.container.GetDevice(ctx, jid)
+			if err != nil {
+				log.Printf("[broker %s] error getting device from store: %v", brokerID, err)
+				releaseBrokerLockConn(lockConn, brokerID)
+				return nil
+			}
+		}
+	}
+
+	if device == nil {
+		device = sm.container.NewDevice()
+		log.Printf("[broker %s] created new unpaired device", brokerID)
+	}
+
+	session := sm.newSession(brokerID, device)
+	session.lockConn = lockConn
+
+	// Another local request may have installed the session while this request
+	// was acquiring the cross-instance advisory lock. Prefer that canonical
+	// session and release the unused lock connection cleanly.
+	sm.mu.Lock()
+	if existing = sm.sessions[brokerID]; existing != nil {
+		sm.mu.Unlock()
+		releaseBrokerLockConn(lockConn, brokerID)
+		if configureBeforeStart != nil {
+			configureBeforeStart(existing)
+		}
+		return existing
+	}
+	if configureBeforeStart != nil {
+		configureBeforeStart(session)
+	}
+	sm.sessions[brokerID] = session
+	sm.sessionWg.Add(1)
+	sm.mu.Unlock()
+	go sm.runSession(session)
+	return session
+}
+
+func (sm *SessionManager) StartOrGet(brokerID string) *BrokerSession {
+	return sm.startOrGet(brokerID, nil)
+}
+
+func (sm *SessionManager) StartOrGetForCodePairing(brokerID, phone string) *BrokerSession {
+	// A terminal pairing failure intentionally remains readable through the
+	// status endpoint so the dashboard can show its cause. Discard it only when
+	// the user explicitly starts a fresh attempt.
+	sm.mu.Lock()
+	previous := sm.sessions[brokerID]
+	if previous != nil && previous.getStatus().ConnectionState == "pairing_error" {
+		delete(sm.sessions, brokerID)
+	}
+	sm.mu.Unlock()
+	if previous != nil && previous.getStatus().ConnectionState == "pairing_error" {
+		previous.cancel()
+		previous.releaseLock()
+	}
+	return sm.startOrGet(brokerID, func(session *BrokerSession) {
+		session.mu.Lock()
+		session.resetting = false
+		session.pairingMode = "code"
+		session.pairingPhone = phone
+		session.mu.Unlock()
+		session.setStatus(Status{
+			Connected:       false,
+			ConnectionState: "pairing_requested",
+			PairingPhone:    phone,
+		})
+	})
+}
+
+func (sm *SessionManager) restoreSessionWhenAvailable(brokerID string) {
+	for attempt := 1; ; attempt++ {
+		if sm.Get(brokerID) != nil {
+			return
+		}
+		deviceJID, err := sm.lookupDeviceJID(context.Background(), brokerID)
+		if err == nil && deviceJID == "" {
+			log.Printf("[broker %s] restore cancelled because the saved mapping was removed", brokerID)
+			return
+		}
+		if err == nil {
+			if session := sm.StartOrGet(brokerID); session != nil {
+				log.Printf("[broker %s] session restored after deployment handoff", brokerID)
+				return
+			}
+		} else {
+			log.Printf("[broker %s] restore lookup failed: %v", brokerID, err)
+		}
+		delay := time.Duration(attempt*2) * time.Second
+		if delay > 30*time.Second {
+			delay = 30 * time.Second
+		}
+		time.Sleep(delay)
+	}
+}
+
+func (sm *SessionManager) newSession(brokerID string, device *store.Device) *BrokerSession {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &BrokerSession{
+		brokerID:       brokerID,
+		device:         device,
+		ctx:            ctx,
+		cancel:         cancel,
+		totalByType:    map[string]int64{},
+		lastSeenByType: map[string]time.Time{},
+		statusFile:     fmt.Sprintf("/tmp/status_%s.json", brokerID),
+		status: Status{
+			ConnectionState: "new",
+			SocketState:     "new",
+			InstanceName:    instanceName,
+			BrokerID:        brokerID,
+			SendPort:        parsePort(sendPort),
+		},
+	}
+}
+
+func (sm *SessionManager) lookupDeviceJID(ctx context.Context, brokerID string) (string, error) {
+	var jid string
+	err := sm.db.QueryRowContext(ctx, "SELECT device_jid FROM broker_whatsapp_devices WHERE whatsapp_connection_key=$1", brokerID).Scan(&jid)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return jid, err
+}
+
+func (sm *SessionManager) saveDeviceJID(ctx context.Context, brokerID, deviceJID string) error {
+	_, err := sm.db.ExecContext(ctx,
+		`INSERT INTO broker_whatsapp_devices (whatsapp_connection_key, device_jid, created_at)
+		 VALUES ($1, $2, NOW())
+		 ON CONFLICT (whatsapp_connection_key) DO UPDATE SET device_jid=$2, updated_at=NOW()`,
+		brokerID, deviceJID)
+	return err
+}
+
+func (sm *SessionManager) deleteDeviceMapping(ctx context.Context, brokerID string, reason string) error {
+	// Look up the existing device_jid to log it in history
+	var deviceJID string
+	err := sm.db.QueryRowContext(ctx, "SELECT device_jid FROM broker_whatsapp_devices WHERE whatsapp_connection_key=$1", brokerID).Scan(&deviceJID)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("[broker %s] error looking up device JID for history: %v", brokerID, err)
+	}
+
+	if deviceJID != "" {
+		_, err := sm.db.ExecContext(ctx,
+			"INSERT INTO broker_whatsapp_device_history (whatsapp_connection_key, device_jid, wiped_at, reason) VALUES ($1, $2, NOW(), $3)",
+			brokerID, deviceJID, reason)
+		if err != nil {
+			log.Printf("[broker %s] error writing to history table: %v", brokerID, err)
+		}
+	}
+
+	_, err = sm.db.ExecContext(ctx, "DELETE FROM broker_whatsapp_devices WHERE whatsapp_connection_key=$1", brokerID)
+	return err
+}
+
+// ── Session lifecycle ──────────────────────────────────────────────────────
+
+func (sm *SessionManager) runSession(s *BrokerSession) {
+	// Keep a panic in one broker's session from taking down the ingestor
+	// process. The recovery defer is registered before the normal cleanup
+	// defers so it runs after the client has been disconnected and the session
+	// lock/WaitGroup slot have been released, allowing this broker to restart
+	// through the existing session lifecycle.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[broker %s] recovered panic in session goroutine (restarting): event/session panic=%v", s.brokerID, recovered)
+			s.setStatus(Status{
+				Connected:        false,
+				ConnectionState:  "reconnecting",
+				SocketState:      "disconnected",
+				LastDisconnectAt: time.Now().UTC().Format(time.RFC3339),
+			})
+			if s.ctx.Err() == nil {
+				sm.sessionWg.Add(1)
+				go sm.runSession(s)
+			}
+		}
+	}()
+	log.Printf("[broker %s] starting session goroutine", s.brokerID)
+	defer s.releaseLock()
+	defer sm.sessionWg.Done()
+	defer func() {
+		if s.client != nil {
+			s.client.RemoveEventHandlers()
+			s.client.Disconnect()
+		}
+	}()
+
+sessionLoop:
+	for attempt := 0; ; attempt++ {
+		// Check if session was stopped externally
+		select {
+		case <-s.ctx.Done():
+			log.Printf("[broker %s] session cancelled, disconnecting", s.brokerID)
+			break sessionLoop
+		default:
+		}
+
+		if attempt > 0 {
+			s.reconnectCount++
+			s.reconnectFailures++
+			s.setStatus(Status{LastDisconnectAt: time.Now().UTC().Format(time.RFC3339)})
+			backoff := time.Duration(2+rand.Intn(1+attempt)) * time.Second
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
+			log.Printf("[broker %s] reconnect attempt %d in %v", s.brokerID, attempt, backoff)
+
+			select {
+			case <-time.After(backoff):
+			case <-s.ctx.Done():
+				break sessionLoop
+			}
+		}
+
+		log.Printf("[broker %s] connecting to WhatsApp...", s.brokerID)
+		s.setStatus(Status{Connected: false, ConnectionState: "connecting", SocketState: "connecting"})
+
+		ctx := context.Background()
+
+		// Remove old client handlers if any
+		if s.client != nil {
+			s.client.RemoveEventHandlers()
+			s.client.Disconnect()
+		}
+
+		if s.device == nil {
+			log.Printf("[broker %s] device is nil, creating new device", s.brokerID)
+			s.device = sm.container.NewDevice()
+		}
+
+		disconnected := make(chan struct{})
+		s.disconnected = disconnected
+		s.disconnectOnce = sync.OnceValue(func() struct{} { close(disconnected); return struct{}{} })
+
+		s.client = whatsmeow.NewClient(s.device, waLog.Noop)
+		// The pinned WhatsMeow release enables this by default, but set it
+		// explicitly: transient socket failures should be retried by the
+		// library while our outer loop continues to handle session lifecycle
+		// events and credential-preserving wipe policy.
+		s.client.EnableAutoReconnect = true
+		s.client.QRClientType = whatsmeow.PairClientChrome
+		s.client.AddEventHandler(func(evt interface{}) {
+			client := s.client
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					log.Printf("[broker %s] recovered panic in WhatsMeow event handler (event=%T): %v; restarting session", s.brokerID, evt, recovered)
+					s.setStatus(Status{
+						Connected:        false,
+						ConnectionState:  "reconnecting",
+						SocketState:      "disconnected",
+						LastDisconnectAt: time.Now().UTC().Format(time.RFC3339),
+					})
+					if s.disconnectOnce != nil {
+						s.disconnectOnce()
+					}
+					if client != nil {
+						go client.Disconnect()
+					}
+				}
+			}()
+			sm.handleEvent(s, evt)
+		})
+
+		// A network outage must never destroy valid WhatsApp credentials.
+		maxReconnectFailures := getEnvInt("MAX_RECONNECT_FAILURES", 10)
+		if s.device.ID != nil && s.reconnectFailures >= maxReconnectFailures {
+			log.Printf("[broker %s] reconnect threshold reached; preserving session timestamp=%s reconnectFailures=%d reconnectCount=%d",
+				s.brokerID, time.Now().UTC().Format(time.RFC3339), s.reconnectFailures, s.reconnectCount)
+			s.reconnectFailures = 0
+		}
+
+		var heartbeatStop chan struct{}
+		stopHeartbeat := func() {
+			if heartbeatStop != nil {
+				close(heartbeatStop)
+				heartbeatStop = nil
+			}
+		}
+
+		if s.device.ID == nil {
+			// No session — QR or code pairing flow
+			s.reconnectFailures = 0
+			qrChan, err := s.client.GetQRChannel(ctx)
+			if err != nil {
+				log.Printf("[broker %s] error getting QR channel: %v", s.brokerID, err)
+				s.reconnectFailures++
+				continue
+			}
+			if err := s.client.Connect(); err != nil {
+				log.Printf("[broker %s] error connecting: %v", s.brokerID, err)
+				s.reconnectFailures++
+				continue
+			}
+			heartbeatStop = s.startHeartbeat()
+
+			// Code pairing: wait for first QR event, then generate pairing code
+			s.mu.RLock()
+			pairMode := s.pairingMode
+			phone := s.pairingPhone
+			s.mu.RUnlock()
+			if pairMode == "code" && phone != "" {
+				log.Printf("[broker %s] initiating code pairing for phone %s", s.brokerID, phone)
+				// Wait for the first QR event to ensure connection is established
+				select {
+				case evt, ok := <-qrChan:
+					if ok && evt.Event == "code" {
+						pairingWindowExpiresAt := time.Now().Add(160 * time.Second).UTC().Format(time.RFC3339)
+						// The QR event can arrive a fraction before the websocket is
+						// marked connected. PairPhone called during that window fails
+						// with "websocket not connected" and leaves the UI with no code.
+						readyDeadline := time.Now().Add(10 * time.Second)
+						for !s.client.IsConnected() && time.Now().Before(readyDeadline) {
+							select {
+							case <-disconnected:
+								stopHeartbeat()
+								continue sessionLoop
+							case <-s.ctx.Done():
+								stopHeartbeat()
+								s.client.Disconnect()
+								return
+							case <-time.After(200 * time.Millisecond):
+							}
+						}
+						if !s.client.IsConnected() {
+							log.Printf("[broker %s] pairing websocket did not become ready", s.brokerID)
+							s.failCodePairing("WhatsApp did not become ready to issue a pairing code. Wait a moment, then try once.")
+							stopHeartbeat()
+							return
+						}
+						// WhatsApp validates both fields and rejects unknown/non-browser
+						// identities with a 400. Keep this aligned with WhatsMeow's
+						// documented `Browser (OS)` contract.
+						code, err := s.client.PairPhone(ctx, phone, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
+						if err != nil {
+							log.Printf("[broker %s] PairPhone failed: %v", s.brokerID, err)
+							s.failCodePairing(pairingErrorMessage(err))
+							stopHeartbeat()
+							return
+						} else {
+							log.Printf("[broker %s] pairing code: %s", s.brokerID, code)
+							s.setStatus(Status{
+								Connected:              false,
+								ConnectionState:        "code_pairing",
+								PairingCode:            code,
+								PairingPhone:           phone,
+								PairingWindowExpiresAt: pairingWindowExpiresAt,
+								QRAvailable:            true,
+							})
+						}
+					}
+				case <-disconnected:
+					stopHeartbeat()
+					continue sessionLoop
+				case <-s.ctx.Done():
+					stopHeartbeat()
+					s.client.Disconnect()
+					return
+				}
+				// Now wait for pairing to complete (channel closes on success)
+				for {
+					select {
+					case _, ok := <-qrChan:
+						if !ok {
+							goto pairDone
+						}
+					case <-disconnected:
+						stopHeartbeat()
+						continue sessionLoop
+					case <-s.ctx.Done():
+						stopHeartbeat()
+						s.client.Disconnect()
+						return
+					}
+				}
+			pairDone:
+				s.mu.Lock()
+				s.pairingMode = ""
+				s.pairingPhone = ""
+				s.mu.Unlock()
+				if shouldRetryQRPairing(s.device) {
+					stopHeartbeat()
+					continue sessionLoop
+				}
+			} else {
+				// Standard QR pairing flow
+			qrLoop:
+				for {
+					select {
+					case evt, ok := <-qrChan:
+						if !ok {
+							break qrLoop
+						}
+						if evt.Event == "code" {
+							s.setStatus(Status{Connected: false, ConnectionState: "qr", QR: evt.Code, QRAvailable: true})
+							fmt.Printf("[broker %s] QR: %s\n", s.brokerID, evt.Code)
+						}
+					case <-disconnected:
+						stopHeartbeat()
+						continue sessionLoop
+					case <-s.ctx.Done():
+						stopHeartbeat()
+						s.client.Disconnect()
+						return
+					}
+				}
+				// A successful pair closes the QR channel while keeping the socket
+				// authenticated. Do not disconnect that brand-new client: wait for its
+				// normal disconnect event below. If pairing ended without credentials,
+				// start a fresh QR attempt instead.
+				if shouldRetryQRPairing(s.device) {
+					stopHeartbeat()
+					continue sessionLoop
+				}
+			}
+		} else {
+			// Existing session — connect directly
+			if err := s.client.Connect(); err != nil {
+				log.Printf("[broker %s] error connecting: %v", s.brokerID, err)
+				s.reconnectFailures++
+				continue
+			}
+			heartbeatStop = s.startHeartbeat()
+		}
+
+		s.reconnectFailures = 0
+
+		// Block until disconnected or cancelled
+		select {
+		case <-disconnected:
+		case <-s.ctx.Done():
+			stopHeartbeat()
+			if s.client != nil {
+				s.client.Disconnect()
+			}
+			return
+		}
+		stopHeartbeat()
+	}
+}
+
+func shouldRetryQRPairing(device *store.Device) bool {
+	return device == nil || device.ID == nil
+}
+
+func (s *BrokerSession) startHeartbeat() chan struct{} {
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				cur := s.getStatus()
+				cur.HeartbeatAt = time.Now().UTC().Format(time.RFC3339)
+				s.setStatus(cur)
+			case <-stop:
+				return
+			case <-s.ctx.Done():
+				return
+			}
+		}
+	}()
+	return stop
+}
+
+// ── Event handler ──────────────────────────────────────────────────────────
+
+func (sm *SessionManager) handleEvent(s *BrokerSession, evt interface{}) {
+	switch v := evt.(type) {
+	case *events.QR:
+		code := strings.Join(v.Codes, "\n")
+		s.setStatus(Status{Connected: false, ConnectionState: "qr", QR: code, QRAvailable: true})
+
+	case *events.QRScannedWithoutMultidevice:
+		s.setStatus(Status{Connected: false, ConnectionState: "scanning"})
+
+	case *events.LoggedOut:
+		log.Printf("[broker %s] SESSION_WIPED reason=logged_out timestamp=%s reconnectFailures=%d reconnectCount=%d",
+			s.brokerID, time.Now().UTC().Format(time.RFC3339), s.reconnectFailures, s.reconnectCount)
+		s.setStatus(Status{Connected: false, ConnectionState: "logged_out", DisconnectReason: 401})
+		_ = s.clearDevice()
+		sm.deleteDeviceMapping(context.Background(), s.brokerID, "logged_out")
+		s.device = nil
+		if s.disconnectOnce != nil {
+			s.disconnectOnce()
+		}
+
+	case *events.Disconnected:
+		hasSession := s.client != nil && s.client.Store.ID != nil
+		state := "reconnecting"
+		socketState := "disconnected"
+		if !hasSession {
+			state = "closed"
+			socketState = "closed"
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		s.setStatus(Status{Connected: false, ConnectionState: state, SocketState: socketState, LastDisconnectAt: now})
+		log.Printf("[broker %s] disconnected (session: %v)", s.brokerID, hasSession)
+		if s.disconnectOnce != nil {
+			s.disconnectOnce()
+		}
+
+	case *events.StreamReplaced:
+		log.Printf("[broker %s] stream replaced; preserving credentials timestamp=%s reconnectFailures=%d reconnectCount=%d",
+			s.brokerID, time.Now().UTC().Format(time.RFC3339), s.reconnectFailures, s.reconnectCount)
+		s.setStatus(Status{Connected: false, ConnectionState: "reconnecting", SocketState: "disconnected", LastDisconnectAt: time.Now().UTC().Format(time.RFC3339)})
+		if s.disconnectOnce != nil {
+			s.disconnectOnce()
+		}
+
+	case *events.Connected:
+		hasSession := s.client.Store.ID != nil
+		phone := ""
+		displayName := ""
+		if hasSession {
+			phone = s.client.Store.ID.User
+			displayName = s.client.Store.PushName
+		}
+		s.reconnectFailures = 0
+		s.setStatus(Status{
+			Connected:       hasSession,
+			ConnectionState: "open",
+			SocketState:     "connected",
+			PhoneNumber:     phone,
+			DisplayName:     displayName,
+			ConnectedSince:  time.Now().UTC().Format(time.RFC3339),
+		})
+		log.Printf("[broker %s] connected to WhatsApp server (phone: %s)", s.brokerID, phone)
+		go sm.initializeConnectedSession(s)
+
+	case *events.PairSuccess:
+		phone := v.ID.User
+		displayName := v.BusinessName
+		if displayName == "" {
+			displayName = s.client.Store.PushName
+		}
+		jidStr := v.ID.String()
+		if err := sm.saveDeviceJID(context.Background(), s.brokerID, jidStr); err != nil {
+			log.Printf("[broker %s] error saving device mapping: %v", s.brokerID, err)
+		}
+		s.reconnectFailures = 0
+		s.reconnectCount = 0
+		s.setStatus(Status{
+			Connected: true, ConnectionState: "open", SocketState: "connected",
+			PhoneNumber: phone, DisplayName: displayName,
+			ConnectedSince: time.Now().UTC().Format(time.RFC3339),
+		})
+		log.Printf("[broker %s] paired — phone: %s, jid: %s (failures reset)", s.brokerID, phone, jidStr)
+
+	case *events.PushNameSetting:
+		cur := s.getStatus()
+		s.setStatus(Status{
+			Connected:       cur.Connected,
+			ConnectionState: cur.ConnectionState,
+			PhoneNumber:     cur.PhoneNumber,
+			DisplayName:     v.Action.GetName(),
+			ConnectedSince:  cur.ConnectedSince,
+			LastMessageAt:   cur.LastMessageAt,
+		})
+
+	case *events.Message:
+		go sm.handleMessage(s, v)
+
+	case *events.HistorySync:
+		if historySyncDisabled() {
+			log.Printf("[broker %s] history sync ignored by policy", s.brokerID)
+			break
+		}
+		go sm.handleHistorySync(s, v)
+
+	case *events.Receipt:
+		fireWebhook(map[string]interface{}{
+			"event": "WHATSAPP_RECEIPT",
+			"data": map[string]interface{}{
+				"broker_id": s.brokerID, "chat_jid": v.Chat.String(), "sender_jid": v.Sender.String(),
+				"message_ids": v.MessageIDs, "receipt_type": string(v.Type), "timestamp": v.Timestamp.Unix(),
+			},
+		})
+
+	case *events.Contact:
+		fireWebhook(map[string]interface{}{
+			"event": "WHATSAPP_CONTACT_UPDATED",
+			"data":  map[string]interface{}{"broker_id": s.brokerID, "jid": v.JID.String(), "timestamp": v.Timestamp.Unix(), "contact": v.Action},
+		})
+
+	case *events.PushName:
+		fireWebhook(map[string]interface{}{
+			"event": "WHATSAPP_CONTACT_UPDATED",
+			"data":  map[string]interface{}{"broker_id": s.brokerID, "jid": v.JID.String(), "jid_alt": v.JIDAlt.String(), "push_name": v.NewPushName},
+		})
+
+	case *events.BusinessName:
+		fireWebhook(map[string]interface{}{
+			"event": "WHATSAPP_CONTACT_UPDATED",
+			"data":  map[string]interface{}{"broker_id": s.brokerID, "jid": v.JID.String(), "business_name": v.NewBusinessName},
+		})
+
+	case *events.JoinedGroup:
+		sm.requestGroupDirectorySync(s, "group joined")
+
+	case *events.GroupInfo:
+		sm.requestGroupDirectorySync(s, "group updated")
+
+	case *events.ChatPresence:
+		fireWebhook(map[string]interface{}{
+			"event": "presence.update",
+			"data":  map[string]interface{}{"broker_id": s.brokerID, "chat_jid": v.Chat.String(), "sender_jid": v.Sender.String(), "state": string(v.State), "media": string(v.Media)},
+		})
+	}
+}
+
+func (sm *SessionManager) initializeConnectedSession(s *BrokerSession) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := s.client.SendPresence(ctx, types.PresenceAvailable); err != nil {
+		log.Printf("[broker %s] send available presence failed: %v", s.brokerID, err)
+	}
+	sm.requestGroupDirectorySync(s, "connected")
+}
+
+// requestGroupDirectorySync makes the WhatsApp group directory eventually
+// consistent after a reconnect. GetJoinedGroups is a websocket request and a
+// stream replacement can interrupt the first call; previously that left the
+// UI with an old partial directory until another group event happened.
+func (sm *SessionManager) requestGroupDirectorySync(s *BrokerSession, reason string) {
+	if s == nil {
+		return
+	}
+	s.groupSyncMu.Lock()
+	if s.groupSyncRunning {
+		s.groupSyncMu.Unlock()
+		return
+	}
+	s.groupSyncRunning = true
+	s.groupSyncMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.groupSyncMu.Lock()
+			s.groupSyncRunning = false
+			s.groupSyncMu.Unlock()
+		}()
+		delays := []time.Duration{0, 5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute}
+		for attempt, delay := range delays {
+			if delay > 0 {
+				select {
+				case <-time.After(delay):
+				case <-s.ctx.Done():
+					return
+				}
+			}
+			if sm.syncGroups(s) {
+				log.Printf("[broker %s] group directory sync completed after %s (attempt %d)", s.brokerID, reason, attempt+1)
+				return
+			}
+		}
+		log.Printf("[broker %s] group directory sync exhausted retries after %s", s.brokerID, reason)
+	}()
+}
+
+func (sm *SessionManager) syncGroups(s *BrokerSession) bool {
+	if s == nil || s.client == nil || !s.client.IsConnected() {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	groups, err := s.client.GetJoinedGroups(ctx)
+	if err != nil {
+		log.Printf("[broker %s] group directory sync failed: %v", s.brokerID, err)
+		return false
+	}
+	// GetJoinedGroups can return a valid group JID and participant snapshot
+	// while the local metadata cache still has an empty subject (common after
+	// history sync/reconnect). Hydrate only those incomplete entries from
+	// WhatsApp before publishing the directory. Keep concurrency bounded so a
+	// large directory refresh does not create a request storm.
+	hydrated := hydrateMissingGroupNames(s.client, groups)
+	if hydrated > 0 {
+		log.Printf("[broker %s] hydrated %d missing WhatsApp group names", s.brokerID, hydrated)
+	}
+	directory := make([]map[string]interface{}, 0, len(groups))
+	for _, group := range groups {
+		participants := make([]map[string]interface{}, 0, len(group.Participants))
+		for _, participant := range group.Participants {
+			participants = append(participants, map[string]interface{}{
+				"id": participant.JID.String(), "phone_jid": participant.PhoneNumber.String(),
+				"lid": participant.LID.String(), "display_name": participant.DisplayName,
+				"is_admin": participant.IsAdmin, "is_super_admin": participant.IsSuperAdmin,
+			})
+		}
+		directory = append(directory, map[string]interface{}{
+			"id": group.JID.String(), "name": group.Name, "topic": group.Topic,
+			"size": group.ParticipantCount, "participants": participants,
+			"is_announce": group.IsAnnounce, "is_locked": group.IsLocked,
+			"is_ephemeral": group.IsEphemeral, "disappearing_timer": group.DisappearingTimer,
+		})
+	}
+	fireWebhook(map[string]interface{}{
+		"event": "GROUPS_REFRESHED", "instance": instanceName, "groups": directory,
+		"data": map[string]interface{}{"broker_id": s.brokerID},
+	})
+	return true
+}
+
+func hydrateMissingGroupNames(client *whatsmeow.Client, groups []*types.GroupInfo) int {
+	if client == nil || len(groups) == 0 {
+		return 0
+	}
+	indices := make(chan int)
+	var wg sync.WaitGroup
+	var hydrated int
+	var hydratedMu sync.Mutex
+
+	worker := func() {
+		defer wg.Done()
+		for index := range indices {
+			group := groups[index]
+			if group == nil || strings.TrimSpace(group.Name) != "" {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			info, err := client.GetGroupInfo(ctx, group.JID)
+			cancel()
+			if err != nil || info == nil || strings.TrimSpace(info.Name) == "" {
+				continue
+			}
+			group.Name = strings.TrimSpace(info.Name)
+			hydratedMu.Lock()
+			hydrated++
+			hydratedMu.Unlock()
+		}
+	}
+
+	workerCount := 6
+	if len(groups) < workerCount {
+		workerCount = len(groups)
+	}
+	wg.Add(workerCount)
+	for i := 0; i < workerCount; i++ {
+		go worker()
+	}
+	for index := range groups {
+		if groups[index] != nil && strings.TrimSpace(groups[index].Name) == "" {
+			indices <- index
+		}
+	}
+	close(indices)
+	wg.Wait()
+	return hydrated
+}
+
+func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
+	info := evt.Info
+	if info.ID == "" {
+		return
+	}
+	// WhatsApp status updates are not group conversations and are not part of
+	// PropAI's market mirror. Drop them before logging, counters, media work,
+	// persistence, extraction, or webhook delivery.
+	if info.Chat.String() == "status@broadcast" || strings.HasSuffix(info.Chat.String(), "@broadcast") {
+		return
+	}
+	// Some connected WhatsApp accounts are private control planes rather than
+	// market-ingestion sources. For those brokers, only the owner's self-chat
+	// may reach the agent. Drop every other message before logging, media
+	// capture, counters, webhooks, or raw_messages persistence.
+	if selfChatOnlyBroker(s.brokerID) && !isOwnWhatsAppJID(s, info.Chat) {
+		return
+	}
+	if info.IsGroup {
+		// This deliberately records receipt before database/webhook work so a
+		// production test can distinguish WhatsApp stream loss from delivery
+		// or extraction backlog.
+		log.Printf("[broker %s] group message received chat=%s id=%s from_me=%t", s.brokerID, info.Chat.String(), info.ID, info.IsFromMe)
+	} else {
+		// Keep direct-message routing observable. Self-chat messages can arrive
+		// as phone-number JIDs, LIDs, or device-addressed JIDs; without this
+		// context a silent self-chat miss is indistinguishable from a WhatsApp
+		// delivery problem.
+		ownID := ""
+		ownLID := ""
+		if s.client != nil && s.client.Store != nil {
+			if s.client.Store.ID != nil {
+				ownID = s.client.Store.ID.String()
+			}
+			if lid := s.client.Store.GetLID(); !lid.IsEmpty() {
+				ownLID = lid.String()
+			}
+		}
+		log.Printf("[broker %s] direct message received chat=%s sender=%s id=%s from_me=%t own_id=%s own_lid=%s", s.brokerID, info.Chat.String(), info.Sender.String(), info.ID, info.IsFromMe, ownID, ownLID)
+	}
+	// Capture live media once. Self-chat receives the same private storage
+	// metadata as normal ingestion, so a photo can become part of a draft
+	// without downloading it twice.
+	var capturedMedia *inboundMedia
+	if evt.Message != nil {
+		capturedMedia = sm.captureMedia(s, evt.Message, info.Chat.String(), info.ID, true)
+	}
+	// Self-chat commands go to the AI agent, but we still forward the message.
+	// Check every message (not just IsFromMe) so phone-sent self-messages
+	// (from_me=false on the web) also trigger the agent.
+	if target, text, ok := selfChatCommand(s, evt); ok {
+		// Never let a slow AI/database request block Whatsmeow's event loop.
+		// The private self-chat request continues asynchronously below.
+		log.Printf("[broker %s] self-chat command received chat=%s id=%s from_me=%t", s.brokerID, target.String(), info.ID, info.IsFromMe)
+		// Surface the read acknowledgement immediately, before the agent or
+		// database work starts. This is the blue-tick/read signal the owner sees
+		// while PropAI prepares the answer.
+		readCtx, readCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := s.client.MarkRead(readCtx, []types.MessageID{info.ID}, info.Timestamp, info.Chat, info.Sender); err != nil {
+			log.Printf("[broker %s] self-chat mark read failed for %s: %v", s.brokerID, info.ID, err)
+		}
+		readCancel()
+		go sm.handleSelfChatCommand(s, target, info.ID, text, capturedMedia)
+		// Owner self-chat is a private agent conversation. It has its own
+		// durable transcript and must never enter raw_messages, where the
+		// extraction worker would treat it as market evidence or backlog.
+		return
+	}
+
+	s.totalMessages++
+	if info.IsFromMe {
+		s.mu.Lock()
+		s.totalOutgoing++
+		s.mu.Unlock()
+	}
+
+	key := map[string]interface{}{
+		"remoteJid": info.Chat.String(),
+		"fromMe":    info.IsFromMe,
+		"id":        info.ID,
+	}
+	if info.IsGroup {
+		key["participant"] = info.Sender.String()
+	}
+
+	sender := map[string]interface{}{
+		"id":   info.Sender.String(),
+		"name": info.PushName,
+	}
+	// LID→PN resolution: WhatsApp increasingly uses LID JIDs (user@lid) instead
+	// of phone-number JIDs.  Look up the stored mapping so the Python backend
+	// can populate sender_phone for broker attribution.
+	if s.client != nil && s.client.Store != nil && s.client.Store.LIDs != nil && info.Sender.Server == "lid" {
+		if pn, err := s.client.Store.LIDs.GetPNForLID(s.ctx, info.Sender); err == nil && !pn.IsEmpty() {
+			sender["phone"] = pn.String()
+			// Keep the resolved phone JID beside the original LID in the
+			// message key. The API persists both as identity evidence, while
+			// using the phone route for the broker Market Inbox entity.
+			key["participantAlt"] = pn.String()
+		}
+	}
+
+	payloadData := map[string]interface{}{
+		"key":              key,
+		"message":          marshalMessage(evt.Message),
+		"message_type":     extractMessageType(evt.Message),
+		"pushName":         info.PushName,
+		"messageTimestamp": info.Timestamp.Unix(),
+		"sender":           sender,
+		"instance":         instanceName,
+		"broker_id":        s.brokerID,
+	}
+	if msgType, ok := payloadData["message_type"].(string); ok && msgType != "" && msgType != "unknown" {
+		seenAt := info.Timestamp
+		if seenAt.IsZero() {
+			seenAt = time.Now()
+		}
+		s.mu.Lock()
+		s.totalByType[msgType]++
+		s.lastSeenByType[msgType] = seenAt
+		s.mu.Unlock()
+	}
+	if capturedMedia != nil {
+		payloadData["media"] = capturedMedia
+	}
+	// Attach rich structured data for non-text message types
+	if loc := extractLocation(evt.Message); loc != nil {
+		payloadData["location"] = loc
+		s.mu.Lock()
+		s.totalLocations++
+		s.mu.Unlock()
+	}
+	if contacts := extractContacts(evt.Message); len(contacts) > 0 {
+		payloadData["contacts"] = contacts
+		s.mu.Lock()
+		s.totalContacts++
+		s.mu.Unlock()
+	}
+	if reaction := extractReaction(evt.Message); reaction != nil {
+		payloadData["reaction"] = reaction
+		s.mu.Lock()
+		s.totalReactions++
+		s.mu.Unlock()
+	}
+	if poll := extractPoll(evt.Message); poll != nil {
+		payloadData["poll"] = poll
+	}
+
+	payload := map[string]interface{}{
+		"event": "MESSAGES_UPSERT",
+		"data":  payloadData,
+	}
+
+	cur := s.getStatus()
+	s.setStatus(Status{
+		Connected:       true,
+		ConnectionState: "open",
+		SocketState:     "connected",
+		PhoneNumber:     cur.PhoneNumber,
+		DisplayName:     cur.DisplayName,
+		ConnectedSince:  cur.ConnectedSince,
+		LastMessageAt:   info.Timestamp.Format(time.RFC3339),
+	})
+
+	rawID, err := sm.insertRawMessage(s.brokerID, payload)
+	if err != nil {
+		log.Printf("[broker %s] raw_messages insert failed: %v", s.brokerID, err)
+		return
+	}
+	// The dedicated extraction worker polls persisted raw messages. Calling the
+	// API once per message is intentionally opt-in: bursts otherwise starve
+	// pairing and auth endpoints even though the raw message is already safe.
+	if strings.EqualFold(getEnv("PROPAI_TRIGGER_EXTRACTION_INLINE", "false"), "true") {
+		tenantID, _ := resolveTenantID(sm.db, s.brokerID)
+		go triggerExtraction(rawID, tenantID)
+	}
+	if strings.EqualFold(getEnv("PROPAI_MARK_MESSAGES_READ", "false"), "true") {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.client.MarkRead(ctx, []types.MessageID{info.ID}, info.Timestamp, info.Chat, info.Sender); err != nil {
+			log.Printf("[broker %s] mark read failed for %s: %v", s.brokerID, info.ID, err)
+		}
+	}
+}
+
+func selfChatCommand(s *BrokerSession, evt *events.Message) (types.JID, string, bool) {
+	if isRevokeMessage(evt.Message) {
+		return types.EmptyJID, "", false
+	}
+	if s == nil || s.client == nil || s.client.Store.ID == nil || evt == nil {
+		return types.EmptyJID, "", false
+	}
+	info := evt.Info
+	if info.IsGroup {
+		return types.EmptyJID, "", false
+	}
+	// Self-chat is when the user messages their own number.
+	// We detect this by comparing the chat JID with the account's own JID / LID,
+	// rather than checking DeviceSentMeta (which is only set for relayed messages
+	// and never for direct phone→server self-messages).
+	if !isOwnWhatsAppJID(s, info.Chat) {
+		return types.EmptyJID, "", false
+	}
+	text := messageText(evt.Message)
+	if text == "" {
+		// Voice notes have no text caption. They still belong to self-chat and
+		// must reach the API so the audio can be transcribed by ElevenLabs Scribe.
+		if evt.Message.GetAudioMessage() != nil {
+			return info.Chat.ToNonAD(), "", true
+		}
+		return types.EmptyJID, "", false
+	}
+	return info.Chat.ToNonAD(), text, true
+}
+
+func isOwnWhatsAppJID(s *BrokerSession, candidate types.JID) bool {
+	if s == nil || s.client == nil || s.client.Store.ID == nil || candidate.IsEmpty() {
+		return false
+	}
+	candidate = candidate.ToNonAD()
+	if candidate == s.client.Store.ID.ToNonAD() {
+		return true
+	}
+	// WhatsApp increasingly addresses direct chats with LIDs. A self-chat sent
+	// from the phone therefore carries the account LID as its destination even
+	// though the paired device ID is the phone-number JID.
+	accountLID := s.client.Store.GetLID()
+	return !accountLID.IsEmpty() && candidate == accountLID.ToNonAD()
+}
+
+func messageText(msg *waE2E.Message) string {
+	if msg == nil {
+		return ""
+	}
+	if isRevokeMessage(msg) {
+		return "Message recalled"
+	}
+	if text := strings.TrimSpace(msg.GetConversation()); text != "" {
+		return text
+	}
+	if text := strings.TrimSpace(msg.GetExtendedTextMessage().GetText()); text != "" {
+		return text
+	}
+	if img := msg.GetImageMessage(); img != nil {
+		if cap := strings.TrimSpace(img.GetCaption()); cap != "" {
+			return cap
+		}
+		return "📷 Photo"
+	}
+	if vid := msg.GetVideoMessage(); vid != nil {
+		if cap := strings.TrimSpace(vid.GetCaption()); cap != "" {
+			return cap
+		}
+		return "🎥 Video"
+	}
+	if doc := msg.GetDocumentMessage(); doc != nil {
+		if cap := strings.TrimSpace(doc.GetCaption()); cap != "" {
+			return cap
+		}
+		return fmt.Sprintf("📄 %s", doc.GetFileName())
+	}
+	if loc := msg.GetLocationMessage(); loc != nil {
+		return fmt.Sprintf("📍 Location: %s (%.6f, %.6f)", loc.GetName(), loc.GetDegreesLatitude(), loc.GetDegreesLongitude())
+	}
+	if liveLoc := msg.GetLiveLocationMessage(); liveLoc != nil {
+		return fmt.Sprintf("📍 Live Location (%.6f, %.6f)", liveLoc.GetDegreesLatitude(), liveLoc.GetDegreesLongitude())
+	}
+	if c := msg.GetContactMessage(); c != nil {
+		return fmt.Sprintf("👤 Contact: %s", c.GetDisplayName())
+	}
+	if ca := msg.GetContactsArrayMessage(); ca != nil && len(ca.GetContacts()) > 0 {
+		return fmt.Sprintf("👤 Contacts: %d contacts", len(ca.GetContacts()))
+	}
+	if r := msg.GetReactionMessage(); r != nil {
+		return fmt.Sprintf("👍 Reaction: %s", r.GetText())
+	}
+	if poll := msg.GetPollCreationMessage(); poll != nil {
+		return fmt.Sprintf("📊 Poll: %s", poll.GetName())
+	}
+	if pollUpd := msg.GetPollUpdateMessage(); pollUpd != nil {
+		return "📊 Poll vote"
+	}
+	if edited := msg.GetEditedMessage(); edited != nil {
+		return messageText(edited.GetMessage())
+	}
+	if inv := msg.GetGroupInviteMessage(); inv != nil {
+		return fmt.Sprintf("📩 Group invite: %s", inv.GetGroupName())
+	}
+	return ""
+}
+
+// ── Rich data extraction ────────────────────────────────────────────────────
+
+func extractMessageType(msg *waE2E.Message) string {
+	if msg == nil {
+		return "unknown"
+	}
+	switch {
+	case isRevokeMessage(msg):
+		return "recalled"
+	case msg.GetConversation() != "" || msg.GetExtendedTextMessage() != nil:
+		return "text"
+	case msg.GetImageMessage() != nil:
+		return "image"
+	case msg.GetVideoMessage() != nil:
+		return "video"
+	case msg.GetAudioMessage() != nil:
+		return "audio"
+	case msg.GetDocumentMessage() != nil:
+		return "document"
+	case msg.GetStickerMessage() != nil:
+		return "sticker"
+	case msg.GetLocationMessage() != nil:
+		return "location"
+	case msg.GetLiveLocationMessage() != nil:
+		return "live_location"
+	case msg.GetContactMessage() != nil:
+		return "contact"
+	case msg.GetContactsArrayMessage() != nil:
+		return "contacts_array"
+	case msg.GetReactionMessage() != nil:
+		return "reaction"
+	case msg.GetPollCreationMessage() != nil:
+		return "poll_creation"
+	case msg.GetPollUpdateMessage() != nil:
+		return "poll_update"
+	case msg.GetEditedMessage() != nil:
+		return "edited"
+	case msg.GetGroupInviteMessage() != nil:
+		return "group_invite"
+	case msg.GetProductMessage() != nil:
+		return "product"
+	case msg.GetOrderMessage() != nil:
+		return "order"
+	case msg.GetInteractiveMessage() != nil:
+		return "interactive"
+	case msg.GetTemplateMessage() != nil:
+		return "template"
+	case msg.GetViewOnceMessage() != nil || msg.GetViewOnceMessageV2() != nil:
+		return "view_once"
+	default:
+		return "unknown"
+	}
+}
+
+// isRevokeMessage uses WhatsApp's protocol metadata rather than looking for a
+// word in the message body. A delete-for-everyone event has no ordinary text;
+// its ProtocolMessage carries the REVOKE type and the key of the target.
+func isRevokeMessage(msg *waE2E.Message) bool {
+	return msg != nil && msg.GetProtocolMessage() != nil &&
+		msg.GetProtocolMessage().GetType() == waE2E.ProtocolMessage_REVOKE
+}
+
+func extractLocation(msg *waE2E.Message) map[string]interface{} {
+	if loc := msg.GetLocationMessage(); loc != nil {
+		return map[string]interface{}{
+			"type":      "location",
+			"latitude":  loc.GetDegreesLatitude(),
+			"longitude": loc.GetDegreesLongitude(),
+			"name":      loc.GetName(),
+			"address":   loc.GetAddress(),
+			"url":       loc.GetURL(),
+		}
+	}
+	if live := msg.GetLiveLocationMessage(); live != nil {
+		return map[string]interface{}{
+			"type":      "live_location",
+			"latitude":  live.GetDegreesLatitude(),
+			"longitude": live.GetDegreesLongitude(),
+			"accuracy":  live.GetAccuracyInMeters(),
+		}
+	}
+	return nil
+}
+
+func parseVCard(vcard string) map[string]string {
+	info := map[string]string{}
+	for _, line := range strings.Split(vcard, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "FN:") || strings.HasPrefix(line, "fn:"):
+			info["name"] = strings.TrimPrefix(strings.TrimPrefix(line, "FN:"), "fn:")
+		case strings.HasPrefix(line, "TEL") || strings.HasPrefix(line, "tel"):
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				info["phone"] = parts[1]
+			}
+		case strings.HasPrefix(line, "ORG:") || strings.HasPrefix(line, "org:"):
+			info["org"] = strings.TrimPrefix(strings.TrimPrefix(line, "ORG:"), "org:")
+		}
+	}
+	return info
+}
+
+func extractContacts(msg *waE2E.Message) []map[string]interface{} {
+	var contacts []map[string]interface{}
+	if c := msg.GetContactMessage(); c != nil {
+		if vcard := c.GetVcard(); vcard != "" {
+			info := parseVCard(vcard)
+			info["display_name"] = c.GetDisplayName()
+			out := make(map[string]interface{}, len(info))
+			for k, v := range info {
+				out[k] = v
+			}
+			contacts = append(contacts, out)
+		}
+	}
+	if ca := msg.GetContactsArrayMessage(); ca != nil {
+		for _, c := range ca.GetContacts() {
+			if vcard := c.GetVcard(); vcard != "" {
+				info := parseVCard(vcard)
+				info["display_name"] = c.GetDisplayName()
+				out := make(map[string]interface{}, len(info))
+				for k, v := range info {
+					out[k] = v
+				}
+				contacts = append(contacts, out)
+			}
+		}
+	}
+	return contacts
+}
+
+func extractReaction(msg *waE2E.Message) map[string]interface{} {
+	r := msg.GetReactionMessage()
+	if r == nil {
+		return nil
+	}
+	key := r.GetKey()
+	result := map[string]interface{}{
+		"emoji": r.GetText(),
+	}
+	if key != nil {
+		result["target_message_id"] = key.GetID()
+		result["target_sender_jid"] = key.GetParticipant()
+		if key.GetFromMe() {
+			result["target_from_me"] = true
+		}
+	}
+	return result
+}
+
+func extractPoll(msg *waE2E.Message) map[string]interface{} {
+	if poll := msg.GetPollCreationMessage(); poll != nil {
+		options := make([]string, 0, len(poll.GetOptions()))
+		for _, opt := range poll.GetOptions() {
+			options = append(options, opt.GetOptionName())
+		}
+		return map[string]interface{}{
+			"type":       "poll_creation",
+			"name":       poll.GetName(),
+			"options":    options,
+			"selectable": poll.GetSelectableOptionsCount(),
+		}
+	}
+	if pollUpd := msg.GetPollUpdateMessage(); pollUpd != nil {
+		vote := pollUpd.GetVote()
+		if vote == nil {
+			return nil
+		}
+		result := map[string]interface{}{
+			"type": "poll_update",
+		}
+		if pKey := pollUpd.GetPollCreationMessageKey(); pKey != nil {
+			result["poll_creation_message_id"] = pKey.GetID()
+		}
+		encPayload := vote.GetEncPayload()
+		if len(encPayload) > 0 {
+			result["has_vote"] = true
+		}
+		return result
+	}
+	return nil
+}
+
+func (sm *SessionManager) handleSelfChatCommand(s *BrokerSession, target types.JID, messageID, text string, media *inboundMedia) {
+	// Signal immediately, before waiting behind an earlier self-chat turn. The
+	// previous implementation started the indicator only after the queue lock
+	// and on a 4-second ticker, making the agent look dead during slow turns.
+	initialPresenceCtx, initialPresenceCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_ = s.client.SendChatPresence(initialPresenceCtx, target, types.ChatPresenceComposing, types.ChatPresenceMediaText)
+	initialPresenceCancel()
+
+	// WhatsApp can deliver several self-messages close together. Keep transcript
+	// writes ordered, but cancel a stale in-flight turn first so the newest user
+	// message does not sit behind a provider timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	s.selfChatCancelMu.Lock()
+	if s.selfChatCancel != nil {
+		s.selfChatCancel()
+	}
+	s.selfChatCancel = cancel
+	s.selfChatCancelMu.Unlock()
+	defer cancel()
+	s.selfChatMu.Lock()
+	defer s.selfChatMu.Unlock()
+
+	// Send the typing indicator. We'll refresh it periodically while the
+	// Python agent streams so the user keeps seeing "typing…" until the
+	// last chunk lands. (WhatsApp clients auto-clear after ~10s otherwise.)
+	stopTyping := make(chan struct{})
+	go func() {
+		// The first composing signal was sent before the lock; refresh only.
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopTyping:
+				return
+			case <-ticker.C:
+				presenceCtx, presenceCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				_ = s.client.SendChatPresence(presenceCtx, target, types.ChatPresenceComposing, types.ChatPresenceMediaText)
+				presenceCancel()
+			}
+		}
+	}()
+	defer func() {
+		close(stopTyping)
+		pausedCtx, pausedCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer pausedCancel()
+		_ = s.client.SendChatPresence(pausedCtx, target, types.ChatPresencePaused, types.ChatPresenceMediaText)
+	}()
+	payload, _ := json.Marshal(selfChatAgentRequest{
+		BrokerID:  s.brokerID,
+		Text:      text,
+		MessageID: string(messageID),
+		SenderJID: target.String(),
+		Media:     media,
+	})
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		strings.TrimRight(apiURL, "/")+"/api/internal/self-chat",
+		strings.NewReader(string(payload)),
+	)
+	if err != nil {
+		log.Printf("[broker %s] self-chat request build failed: %v", s.brokerID, err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+	token := strings.TrimSpace(os.Getenv("PROPAI_INTERNAL_TOKEN"))
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_KEY"))
+	}
+	if token != "" {
+		req.Header.Set("X-PropAI-Internal-Token", token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("[broker %s] self-chat agent request failed: %v", s.brokerID, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Try NDJSON streaming first. If the response is plain JSON (sync path
+	// for data queries, or older API), fall back to a one-shot decode.
+	mediaType := resp.Header.Get("Content-Type")
+	if strings.HasPrefix(mediaType, "application/x-ndjson") || strings.HasPrefix(mediaType, "application/jsonlines") {
+		sm.handleSelfChatStream(s, target, resp, messageID)
+		return
+	}
+	// Legacy non-streaming path: single JSON reply.
+	var agentResponse selfChatAgentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&agentResponse); err != nil {
+		log.Printf("[broker %s] self-chat agent response decode failed: %v", s.brokerID, err)
+		return
+	}
+	if resp.StatusCode >= 300 || strings.TrimSpace(agentResponse.Reply) == "" {
+		detail := agentResponse.Error
+		if detail == "" {
+			detail = agentResponse.Message
+		}
+		log.Printf("[broker %s] self-chat agent returned status=%d error=%s", s.brokerID, resp.StatusCode, detail)
+		return
+	}
+	sendCtx, sendCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer sendCancel()
+	if _, err := s.client.SendMessage(
+		sendCtx,
+		target,
+		selfChatReplyMessage(strings.TrimSpace(agentResponse.Reply), messageID, target.String()),
+	); err != nil {
+		log.Printf("[broker %s] self-chat reply send failed: %v", s.brokerID, err)
+	} else {
+		log.Printf("[broker %s] self-chat reply sent chat=%s", s.brokerID, target.String())
+	}
+}
+
+// selfChatStreamEvent is one line of NDJSON from /api/internal/self-chat.
+type selfChatStreamEvent struct {
+	Event string `json:"event"`
+	Delta string `json:"delta,omitempty"`
+	Reply string `json:"reply,omitempty"`
+	Error string `json:"message,omitempty"`
+}
+
+// handleSelfChatStream reads NDJSON events from the Python streaming endpoint
+// and sends each chunk as a separate WhatsApp message so the broker sees a
+// progressive reply (one bullet or two at a time) instead of a single wall
+// of text after the full completion.
+func (sm *SessionManager) handleSelfChatStream(s *BrokerSession, target types.JID, resp *http.Response, quotedMessageID string) {
+	// Flush thresholds — keep each WhatsApp message short and readable.
+	const (
+		flushChars   = 60                     // Send a message when buffer reaches this many chars.
+		maxFlushWait = 800 * time.Millisecond // Or after this much wall time.
+	)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 4096), 64*1024)
+	flushTimer := time.NewTimer(maxFlushWait)
+	defer flushTimer.Stop()
+
+	buffer := strings.Builder{}
+	sentAny := false
+	flush := func(force bool) {
+		text := strings.TrimSpace(buffer.String())
+		if text == "" {
+			return
+		}
+		if !force && len(text) < flushChars {
+			return
+		}
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer sendCancel()
+		if _, err := s.client.SendMessage(
+			sendCtx,
+			target,
+			selfChatReplyMessage(text, quotedMessageID, target.String()),
+		); err != nil {
+			log.Printf("[broker %s] self-chat chunk send failed: %v", s.brokerID, err)
+		} else {
+			log.Printf("[broker %s] self-chat reply chunk sent chat=%s", s.brokerID, target.String())
+		}
+		sentAny = true
+		buffer.Reset()
+		flushTimer.Reset(maxFlushWait)
+	}
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var evt selfChatStreamEvent
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			log.Printf("[broker %s] self-chat stream parse failed: %v line=%q", s.brokerID, err, line[:min(120, len(line))])
+			continue
+		}
+		switch evt.Event {
+		case "chunk":
+			if evt.Delta != "" {
+				buffer.WriteString(evt.Delta)
+				flush(false)
+			}
+		case "done":
+			// Deltas are the response. The done reply is only a fallback for
+			// providers that emit no deltas; replacing an existing buffer here
+			// duplicates content that may already have been sent.
+			if !sentAny && strings.TrimSpace(buffer.String()) == "" && strings.TrimSpace(evt.Reply) != "" {
+				buffer.WriteString(evt.Reply)
+			}
+			flush(true)
+			return
+		case "error":
+			log.Printf("[broker %s] self-chat stream error: %s", s.brokerID, evt.Error)
+			flush(true) // Best-effort flush of whatever we have.
+			if strings.TrimSpace(evt.Error) != "" && strings.TrimSpace(buffer.String()) == "" {
+				sendCtx, sendCancel := context.WithTimeout(context.Background(), 15*time.Second)
+				_, sendErr := s.client.SendMessage(sendCtx, target, selfChatReplyMessage(
+					"PropAI- • Agent provider rejected this turn; your conversation was not changed. Please retry.",
+					quotedMessageID, target.String(),
+				))
+				sendCancel()
+				if sendErr != nil {
+					log.Printf("[broker %s] self-chat error reply send failed: %v", s.brokerID, sendErr)
+				}
+			}
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("[broker %s] self-chat stream read failed: %v", s.brokerID, err)
+	}
+	// Stream ended without a done event — flush whatever we have.
+	flush(true)
+}
+
+// selfChatReplyMessage keeps every automated self-chat response visibly tied
+// to the broker's incoming message in WhatsApp.
+func selfChatReplyMessage(text, quotedMessageID, remoteJID string) *waE2E.Message {
+	if strings.TrimSpace(quotedMessageID) == "" {
+		return &waE2E.Message{Conversation: proto.String(text)}
+	}
+	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+		Text: proto.String(text),
+		ContextInfo: &waE2E.ContextInfo{
+			StanzaID: proto.String(strings.TrimSpace(quotedMessageID)),
+			RemoteJID: proto.String(strings.TrimSpace(remoteJID)),
+			QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+		},
+	}}
+}
+
+// ── HTTP handlers ──────────────────────────────────────────────────────────
+
+func (sm *SessionManager) handleHistorySync(s *BrokerSession, evt *events.HistorySync) {
+	if evt == nil || evt.Data == nil {
+		return
+	}
+	// History replay is never a valid source for a self-chat-only broker. Keep
+	// this guard local as well as the event-level guard so future callers cannot
+	// accidentally bulk-insert the account's chat history.
+	if selfChatOnlyBroker(s.brokerID) {
+		log.Printf("[broker %s] history sync ignored: self-chat-only policy", s.brokerID)
+		return
+	}
+
+	conversations := evt.Data.GetConversations()
+	posted := 0
+	directory := make([]map[string]interface{}, 0, len(conversations))
+	for _, conv := range conversations {
+		if conv == nil {
+			continue
+		}
+		chatID := conv.GetID()
+		chatName := strings.TrimSpace(conv.GetName())
+		if chatName == "" {
+			chatName = strings.TrimSpace(conv.GetDisplayName())
+		}
+		if conversationType := whatsappConversationType(chatID); conversationType != "" {
+			lastMessageAt := whatsappConversationTimestamp(conv.GetLastMsgTimestamp())
+			if lastMessageAt == "" {
+				lastMessageAt = whatsappConversationTimestamp(conv.GetConversationTimestamp())
+			}
+			directory = append(directory, map[string]interface{}{
+				"jid":             chatID,
+				"type":            conversationType,
+				"name":            chatName,
+				"unread_count":    conv.GetUnreadCount(),
+				"message_count":   len(conv.GetMessages()),
+				"last_message_at": lastMessageAt,
+				"source":          "history_sync",
+			})
+		}
+
+		for _, historyMsg := range conv.GetMessages() {
+			if historyMsg == nil || historyMsg.GetMessage() == nil {
+				continue
+			}
+			if sm.postWebMessage(s, historyMsg.GetMessage(), chatID, chatName, "history_sync") {
+				posted++
+			}
+		}
+	}
+	for start := 0; start < len(directory); start += 200 {
+		end := start + 200
+		if end > len(directory) {
+			end = len(directory)
+		}
+		fireWebhook(map[string]interface{}{
+			"event": "CONVERSATIONS_UPSERT",
+			"data": map[string]interface{}{
+				"broker_id": s.brokerID,
+				"instance":  instanceName,
+			},
+			"instance":      instanceName,
+			"conversations": directory[start:end],
+		})
+	}
+
+	if posted > 0 {
+		s.totalMessages += int64(posted)
+		cur := s.getStatus()
+		s.setStatus(Status{
+			Connected:       true,
+			ConnectionState: "open",
+			SocketState:     "connected",
+			PhoneNumber:     cur.PhoneNumber,
+			DisplayName:     cur.DisplayName,
+			ConnectedSince:  cur.ConnectedSince,
+			LastMessageAt:   time.Now().UTC().Format(time.RFC3339),
+		})
+	}
+	log.Printf("[broker %s] history sync progress=%d conversations=%d messages_posted=%d", s.brokerID, evt.Data.GetProgress(), len(conversations), posted)
+}
+
+func whatsappConversationType(jid string) string {
+	jid = strings.ToLower(strings.TrimSpace(jid))
+	switch {
+	case jid == "", jid == "status@broadcast", strings.HasSuffix(jid, "@newsletter"):
+		return ""
+	case strings.HasSuffix(jid, "@g.us"):
+		return "group"
+	case strings.HasSuffix(jid, "@broadcast"):
+		return "broadcast"
+	default:
+		return "direct"
+	}
+}
+
+// WhatsApp history timestamps are normally seconds, but some sync payloads
+// contain milliseconds. Never let a malformed value push a chat into the
+// future and make the directory appear stale or wrongly ordered.
+func whatsappConversationTimestamp(timestamp uint64) string {
+	if timestamp == 0 {
+		return ""
+	}
+	seconds := int64(timestamp)
+	if seconds > 10_000_000_000 {
+		seconds /= 1000
+	}
+	value := time.Unix(seconds, 0).UTC()
+	if value.After(time.Now().UTC().Add(7 * 24 * time.Hour)) {
+		return ""
+	}
+	return value.Format(time.RFC3339)
+}
+
+func (sm *SessionManager) postWebMessage(s *BrokerSession, wmsg *waWeb.WebMessageInfo, chatID, chatName, source string) bool {
+	if wmsg == nil || wmsg.GetMessage() == nil || wmsg.GetKey() == nil {
+		return false
+	}
+
+	keyInfo := wmsg.GetKey()
+	messageID := strings.TrimSpace(keyInfo.GetID())
+	if messageID == "" {
+		return false
+	}
+
+	remoteJID := strings.TrimSpace(keyInfo.GetRemoteJID())
+	if remoteJID == "" {
+		remoteJID = strings.TrimSpace(chatID)
+	}
+	if remoteJID == "" {
+		return false
+	}
+	if remoteJID == "status@broadcast" || strings.HasSuffix(remoteJID, "@broadcast") {
+		return false
+	}
+
+	fromMe := keyInfo.GetFromMe()
+	participant := strings.TrimSpace(wmsg.GetParticipant())
+	if participant == "" {
+		participant = strings.TrimSpace(keyInfo.GetParticipant())
+	}
+
+	senderID := participant
+	if senderID == "" && !fromMe {
+		senderID = remoteJID
+	}
+
+	key := map[string]interface{}{
+		"remoteJid": remoteJID,
+		"fromMe":    fromMe,
+		"id":        messageID,
+	}
+	if participant != "" {
+		key["participant"] = participant
+	}
+
+	pushName := strings.TrimSpace(wmsg.GetPushName())
+	timestamp := int64(wmsg.GetMessageTimestamp())
+	if timestamp <= 0 {
+		timestamp = time.Now().Unix()
+	}
+
+	payload := map[string]interface{}{
+		"event": "MESSAGES_UPSERT",
+		"data": map[string]interface{}{
+			"key":              key,
+			"message":          marshalMessage(wmsg.GetMessage()),
+			"message_type":     extractMessageType(wmsg.GetMessage()),
+			"pushName":         pushName,
+			"messageTimestamp": timestamp,
+			"sender": map[string]interface{}{
+				"id":   senderID,
+				"name": pushName,
+			},
+			"instance":         instanceName,
+			"broker_id":        s.brokerID,
+			"source":           source,
+			"conversationName": chatName,
+		},
+	}
+	if media := sm.captureMedia(s, wmsg.GetMessage(), remoteJID, messageID, false); media != nil {
+		payload["data"].(map[string]interface{})["media"] = media
+	}
+
+	if _, err := sm.insertRawMessage(s.brokerID, payload); err != nil {
+		log.Printf("[broker %s] history sync raw_messages insert failed: %v", s.brokerID, err)
+		return false
+	}
+	return true
+}
+
+func brokerIDFromRequest(r *http.Request) string {
+	if id := r.URL.Query().Get("broker_id"); id != "" {
+		return id
+	}
+	if id := r.Header.Get("X-Broker-Id"); id != "" {
+		return id
+	}
+	return "default"
+}
+
+func internalServiceToken() string {
+	if token := strings.TrimSpace(os.Getenv("PROPAI_INTERNAL_TOKEN")); token != "" {
+		return token
+	}
+	return strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_KEY"))
+}
+
+func validInternalRequest(r *http.Request) bool {
+	expected := internalServiceToken()
+	supplied := strings.TrimSpace(r.Header.Get("X-PropAI-Internal-Token"))
+	return expected != "" && supplied != "" && hmac.Equal([]byte(supplied), []byte(expected))
+}
+
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("[PANIC] %s %s: %v", r.Method, r.URL.Path, rec)
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+func internalOnly(next http.HandlerFunc, allowPublicLiveness bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if allowPublicLiveness && r.Method == http.MethodGet && r.URL.Query().Get("broker_id") == "" && !validInternalRequest(r) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "instance": instanceName})
+			return
+		}
+		if internalServiceToken() == "" {
+			http.Error(w, `{"error":"internal service authentication is not configured"}`, http.StatusServiceUnavailable)
+			return
+		}
+		if !validInternalRequest(r) {
+			http.Error(w, `{"error":"invalid internal service token"}`, http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
+	if r.Method == method {
+		return true
+	}
+	w.Header().Set("Allow", method)
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	json.NewEncoder(w).Encode(map[string]string{"error": method + " required"})
+	return false
+}
+
+func (sm *SessionManager) healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	brokerID := r.URL.Query().Get("broker_id")
+	if brokerID == "all" {
+		sessions := sm.List()
+		statuses := make([]Status, 0, len(sessions))
+		for _, s := range sessions {
+			statuses = append(statuses, s.getStatus())
+		}
+		json.NewEncoder(w).Encode(statuses)
+		return
+	}
+	if brokerID == "" {
+		brokerID = "default"
+	}
+	s := sm.Get(brokerID)
+	if s == nil {
+		json.NewEncoder(w).Encode(Status{
+			BrokerID: brokerID, ConnectionState: "unknown", Connected: false,
+			InstanceName: instanceName, SendPort: parsePort(sendPort),
+		})
+		return
+	}
+	json.NewEncoder(w).Encode(s.getStatus())
+}
+
+func (sm *SessionManager) connectHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+	session := sm.StartOrGet(brokerID)
+	if session == nil {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "session is already active in another ingestor instance"})
+		return
+	}
+	status := session.getStatus()
+	json.NewEncoder(w).Encode(status)
+}
+
+// syncGroupsHandler asks one already-linked WhatsApp session to publish its
+// current joined-group directory. It is deliberately asynchronous: GetJoinedGroups
+// can take a few seconds and the dashboard should never hold an HTTP request
+// open while WhatsApp is responding.
+func (sm *SessionManager) syncGroupsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+	session := sm.Get(brokerID)
+	if session == nil || session.client == nil || !session.client.IsConnected() {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "WhatsApp is not connected for this phone"})
+		return
+	}
+	sm.requestGroupDirectorySync(session, "dashboard refresh")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "broker_id": brokerID, "state": "refreshing"})
+}
+
+func (sm *SessionManager) pairCodeHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+	var body struct {
+		Phone string `json:"phone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Phone == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "phone number is required"})
+		return
+	}
+	// Strip non-digits
+	phone := ""
+	for _, c := range body.Phone {
+		if c >= '0' && c <= '9' {
+			phone += string(c)
+		}
+	}
+	if len(phone) < 10 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid phone number"})
+		return
+	}
+
+	session, ok := sm.startCodePairing(w, brokerID, phone)
+	if !ok {
+		return
+	}
+
+	// Poll until PairPhone() generates the code or timeout. Keep this deadline
+	// aligned with the API proxy timeout; connecting the websocket and receiving
+	// the first QR-channel event can legitimately take several seconds.
+	// PairPhone() runs asynchronously inside runSession after the first QR
+	// event arrives; we wait for the code to appear in the session status.
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		st := session.getStatus()
+		if code := st.PairingCode; code != "" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":                        true,
+				"phone":                     phone,
+				"pairing_code":              code,
+				"pairing_window_expires_at": st.PairingWindowExpiresAt,
+				"connection_state":          st.ConnectionState,
+			})
+			return
+		}
+		if st.ConnectionState == "error" {
+			w.WriteHeader(http.StatusBadGateway)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":     false,
+				"phone":  phone,
+				"error":  "WhatsApp rejected the pairing-code request; check the ingestor logs",
+				"status": st,
+			})
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	// Timed out — do not claim success without a code. The frontend can show the
+	// real connection state and the broker can retry without seeing "N/A".
+	status := session.getStatus()
+	w.WriteHeader(http.StatusGatewayTimeout)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":     false,
+		"phone":  phone,
+		"error":  "Timed out waiting for WhatsApp pairing code",
+		"status": status,
+	})
+}
+
+// startCodePairing starts WhatsApp's asynchronous phone-code flow without
+// making the caller wait for a websocket QR event. The dashboard polls status
+// afterwards, avoiding proxy/Cloudflare timeouts during normal 5-20s setup.
+func (sm *SessionManager) startCodePairing(w http.ResponseWriter, brokerID, phone string) (*BrokerSession, bool) {
+	session := sm.StartOrGetForCodePairing(brokerID, phone)
+	if session == nil {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "pairing session is still releasing; retry in a few seconds"})
+		return nil, false
+	}
+	return session, true
+}
+
+func (sm *SessionManager) pairCodeStartHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+	var body struct {
+		Phone string `json:"phone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Phone == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "phone number is required"})
+		return
+	}
+	phone := ""
+	for _, c := range body.Phone {
+		if c >= '0' && c <= '9' {
+			phone += string(c)
+		}
+	}
+	if len(phone) < 10 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid phone number"})
+		return
+	}
+	if _, ok := sm.startCodePairing(w, brokerID, phone); !ok {
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok": true, "broker_id": brokerID, "phone": phone, "state": "generating",
+	})
+}
+
+func (sm *SessionManager) pairCodeStatusHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+	session := sm.Get(brokerID)
+	if session == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "state": "not_started"})
+		return
+	}
+	status := session.getStatus()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok": true, "state": status.ConnectionState, "status": status,
+		"pairing_code":              status.PairingCode,
+		"pairing_window_expires_at": status.PairingWindowExpiresAt,
+	})
+}
+
+func (sm *SessionManager) resetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+	s := sm.Get(brokerID)
+	if s == nil {
+		// A process restart may leave persisted credentials without an active
+		// in-memory session. Reset those too; otherwise the UI would claim a
+		// successful reset while the next start silently restores the old device.
+		lookupCtx, cancelLookup := context.WithTimeout(context.Background(), 8*time.Second)
+		deviceJID, err := sm.lookupDeviceJID(lookupCtx, brokerID)
+		cancelLookup()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to look up persisted WhatsApp credentials"})
+			return
+		}
+		credentialsWarning := ""
+		if deviceJID != "" {
+			jid, parseErr := types.ParseJID(deviceJID)
+			if parseErr != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "failed to parse persisted WhatsApp device"})
+				return
+			}
+			getCtx, cancelGet := context.WithTimeout(context.Background(), 8*time.Second)
+			device, getErr := sm.container.GetDevice(getCtx, jid)
+			cancelGet()
+			if getErr != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "failed to load persisted WhatsApp credentials"})
+				return
+			}
+			if device != nil {
+				deleteCtx, cancelDelete := context.WithTimeout(context.Background(), 8*time.Second)
+				deleteErr := device.Delete(deleteCtx)
+				cancelDelete()
+				if deleteErr != nil {
+					// Device.Delete can time out while the SQL store is busy. The
+					// broker mapping is the authoritative restore pointer; remove it
+					// below so this broker cannot resurrect the stale device. The
+					// orphaned device is scoped to this broker and can be garbage
+					// collected later when the store is healthy.
+					log.Printf("[broker %s] persisted device delete timed out during reset; removing broker mapping: %v", brokerID, deleteErr)
+					credentialsWarning = "The old WhatsApp device could not be confirmed deleted because the device store timed out. Its broker mapping was removed; pair again now."
+				}
+			}
+		}
+		mappingCtx, cancelMapping := context.WithTimeout(context.Background(), 8*time.Second)
+		err = sm.deleteDeviceMapping(mappingCtx, brokerID, "http_reset")
+		cancelMapping()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete persisted WhatsApp device mapping"})
+			return
+		}
+		resetAt := time.Now().UTC()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":                  true,
+			"broker_id":           brokerID,
+			"credentials_deleted": true,
+			"mapping_deleted":     true,
+			"credentials_warning": credentialsWarning,
+			"pairing_required":    true,
+			"reset_at":            resetAt.Format(time.RFC3339),
+		})
+		return
+	}
+	s.mu.Lock()
+	s.resetting = true
+	s.pairingMode = ""
+	s.pairingPhone = ""
+	s.mu.Unlock()
+	// Publish an explicit offline state before the network logout begins. This
+	// replaces any cached Connected state in the API immediately.
+	s.setStatus(Status{
+		Connected:       false,
+		ConnectionState: "pairing_required",
+		SocketState:     "closed",
+	})
+	log.Printf("[broker %s] SESSION_WIPED reason=http_reset timestamp=%s reconnectFailures=%d reconnectCount=%d",
+		brokerID, time.Now().UTC().Format(time.RFC3339), s.reconnectFailures, s.reconnectCount)
+	resetAt := time.Now().UTC()
+	whatsAppUnlinked, unlinkErr := s.unlinkAndClearDevice()
+	remoteUnlinkWarning := ""
+	if unlinkErr != nil {
+		// A remote Logout can time out after the reset has begun. Do not leave
+		// the local Signal identity behind or report that the session was
+		// unchanged: clearing it is the essential reset operation and allows a
+		// fresh pairing. The user can remove a lingering linked device from the
+		// WhatsApp app if the remote revoke was not confirmed.
+		log.Printf("[broker %s] WhatsApp unlink during reset was not confirmed: %v", brokerID, unlinkErr)
+		if clearErr := s.clearDevice(); clearErr != nil {
+			if s.cancel != nil {
+				s.cancel()
+			}
+			sm.Remove(brokerID)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to clear persisted WhatsApp credentials"})
+			return
+		}
+		remoteUnlinkWarning = "WhatsApp did not confirm removal of the old linked device. Remove PropAI in WhatsApp Linked Devices if it is still listed."
+	}
+	mappingCtx, cancelMapping := context.WithTimeout(context.Background(), 8*time.Second)
+	mappingErr := sm.deleteDeviceMapping(mappingCtx, brokerID, "http_reset")
+	cancelMapping()
+	if mappingErr != nil {
+		if s.cancel != nil {
+			s.cancel()
+		}
+		sm.Remove(brokerID)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete persisted WhatsApp device mapping"})
+		return
+	}
+	s.device = sm.container.NewDevice()
+	s.reconnectFailures = 0
+	// A reset is not a temporary network disconnect. Cancelling this session
+	// prevents the run loop from reconnecting the old client after we have
+	// deleted its credentials. A later /pair-code creates the only permitted
+	// replacement session.
+	if s.client != nil {
+		s.client.RemoveEventHandlers()
+		s.client.Disconnect()
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	sm.Remove(brokerID)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":                    true,
+		"broker_id":             brokerID,
+		"credentials_deleted":   true,
+		"mapping_deleted":       true,
+		"whatsapp_unlinked":     whatsAppUnlinked,
+		"remote_unlink_warning": remoteUnlinkWarning,
+		"pairing_required":      true,
+		"reset_at":              resetAt.Format(time.RFC3339),
+	})
+}
+
+func (sm *SessionManager) disconnectHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+	s := sm.Get(brokerID)
+	if s == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "note": "no session to disconnect"})
+		return
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	// Respond immediately so the caller (Cloudflare/FastAPI) never times out.
+	// Remove() does a blocking DB call (advisory lock release) that must not
+	// hold the HTTP response hostage.
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	// Fire-and-forget cleanup in a separate goroutine.
+	go func() {
+		sm.Remove(brokerID)
+		log.Printf("[broker %s] disconnected and removed", brokerID)
+	}()
+}
+
+func (sm *SessionManager) deleteSessionHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	if brokerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "broker_id is required"})
+		return
+	}
+
+	if session := sm.Get(brokerID); session != nil {
+		if session.cancel != nil {
+			session.cancel()
+		}
+		_ = session.clearDevice()
+		sm.Remove(brokerID)
+	} else if deviceJID, err := sm.lookupDeviceJID(context.Background(), brokerID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to look up stored WhatsApp session"})
+		return
+	} else if deviceJID != "" {
+		if jid, parseErr := types.ParseJID(deviceJID); parseErr == nil {
+			if device, getErr := sm.container.GetDevice(context.Background(), jid); getErr == nil && device != nil {
+				deleteCtx, cancelDelete := context.WithTimeout(context.Background(), 8*time.Second)
+				deleteErr := device.Delete(deleteCtx)
+				cancelDelete()
+				if deleteErr != nil {
+					log.Printf("[broker %s] error deleting inactive device: %v", brokerID, deleteErr)
+				}
+			}
+		}
+	}
+
+	if err := sm.deleteDeviceMapping(context.Background(), brokerID, "http_delete"); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete stored WhatsApp session"})
+		return
+	}
+	log.Printf("[broker %s] session and device mapping deleted", brokerID)
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (sm *SessionManager) connectedSession(brokerID string) (*BrokerSession, error) {
+	if brokerID != "" {
+		s := sm.Get(brokerID)
+		if s == nil {
+			return nil, fmt.Errorf("phone not found")
+		}
+		if s.client == nil || !s.client.IsConnected() || s.client.Store.ID == nil {
+			return nil, fmt.Errorf("phone is not connected")
+		}
+		return s, nil
+	}
+
+	var selected *BrokerSession
+	for _, s := range sm.List() {
+		if s.client == nil || !s.client.IsConnected() || s.client.Store.ID == nil {
+			continue
+		}
+		if selected != nil {
+			return nil, fmt.Errorf("multiple phones are connected; brokerId is required")
+		}
+		selected = s
+	}
+	if selected == nil {
+		return nil, fmt.Errorf("no connected phone")
+	}
+	return selected, nil
+}
+
+func (sm *SessionManager) sendMessageHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "POST required"})
+		return
+	}
+	var body sendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid JSON body"})
+		return
+	}
+	body.RemoteJID = strings.TrimSpace(body.RemoteJID)
+	body.Text = strings.TrimSpace(body.Text)
+	if body.RemoteJID == "" || body.Text == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "remoteJid and text are required"})
+		return
+	}
+	target, err := types.ParseJID(body.RemoteJID)
+	if err != nil || target.IsEmpty() {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid remoteJid"})
+		return
+	}
+	session, err := sm.connectedSession(strings.TrimSpace(body.BrokerID))
+	if err != nil {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	message := &waE2E.Message{Conversation: proto.String(body.Text)}
+	if quotedID := strings.TrimSpace(body.QuotedMessageID); quotedID != "" {
+		remoteJID := strings.TrimSpace(body.QuotedRemoteJID)
+		if remoteJID == "" {
+			remoteJID = target.String()
+		}
+		message = &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String(body.Text),
+			ContextInfo: &waE2E.ContextInfo{
+				StanzaID: proto.String(quotedID), RemoteJID: proto.String(remoteJID),
+				Participant:   proto.String(strings.TrimSpace(body.QuotedParticipant)),
+				QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+			},
+		}}
+	}
+	result, err := session.client.SendMessage(
+		ctx,
+		target,
+		message,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"message_id": result.ID,
+		"timestamp":  result.Timestamp.UTC().Format(time.RFC3339),
+		"broker_id":  session.brokerID,
+	})
+}
+
+// ── Send media handler ──────────────────────────────────────────────────────
+
+type sendMediaRequest struct {
+	BrokerID  string `json:"brokerId"`
+	RemoteJID string `json:"remoteJid"`
+	MediaType string `json:"mediaType"` // image, video, audio, document
+	MimeType  string `json:"mimeType"`
+	FileName  string `json:"fileName,omitempty"`
+	Caption   string `json:"caption,omitempty"`
+}
+
+func (sm *SessionManager) sendMediaHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "POST required"})
+		return
+	}
+
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "multipart form required"})
+		return
+	}
+
+	var body sendMediaRequest
+	body.BrokerID = r.FormValue("brokerId")
+	body.RemoteJID = r.FormValue("remoteJid")
+	body.MediaType = r.FormValue("mediaType")
+	body.MimeType = r.FormValue("mimeType")
+	body.FileName = r.FormValue("fileName")
+	body.Caption = r.FormValue("caption")
+
+	if body.RemoteJID == "" || body.MediaType == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "remoteJid and mediaType are required"})
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "file upload required"})
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "failed to read file"})
+		return
+	}
+
+	target, err := types.ParseJID(body.RemoteJID)
+	if err != nil || target.IsEmpty() {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "invalid remoteJid"})
+		return
+	}
+
+	session, err := sm.connectedSession(strings.TrimSpace(body.BrokerID))
+	if err != nil {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	var message *waE2E.Message
+	switch body.MediaType {
+	case "image":
+		message = &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+			URL:        proto.String(""),
+			Mimetype:   proto.String(body.MimeType),
+			Caption:    proto.String(body.Caption),
+			FileLength: proto.Uint64(uint64(len(content))),
+			DirectPath: proto.String(""),
+		}}
+	case "video":
+		message = &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
+			URL:        proto.String(""),
+			Mimetype:   proto.String(body.MimeType),
+			Caption:    proto.String(body.Caption),
+			FileLength: proto.Uint64(uint64(len(content))),
+			DirectPath: proto.String(""),
+		}}
+	case "audio":
+		message = &waE2E.Message{AudioMessage: &waE2E.AudioMessage{
+			URL:        proto.String(""),
+			Mimetype:   proto.String(body.MimeType),
+			FileLength: proto.Uint64(uint64(len(content))),
+			DirectPath: proto.String(""),
+		}}
+	case "document":
+		fileName := body.FileName
+		if fileName == "" {
+			fileName = "document"
+		}
+		message = &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+			URL:        proto.String(""),
+			Mimetype:   proto.String(body.MimeType),
+			FileName:   proto.String(fileName),
+			Caption:    proto.String(body.Caption),
+			FileLength: proto.Uint64(uint64(len(content))),
+			DirectPath: proto.String(""),
+		}}
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "unsupported mediaType: use image, video, audio, or document"})
+		return
+	}
+
+	result, err := session.client.SendMessage(ctx, target, message)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"message_id": result.ID,
+		"timestamp":  result.Timestamp.UTC().Format(time.RFC3339),
+		"broker_id":  session.brokerID,
+	})
+}
+
+// ── Capabilities handler ────────────────────────────────────────────────────
+
+type capabilityRow struct {
+	Name          string `json:"name"`
+	Status        string `json:"status"` // active, partial, captured_unused, not_available
+	Icon          string `json:"icon"`
+	Description   string `json:"description"`
+	EvidenceCount int64  `json:"evidence_count"`
+	LastSeen      string `json:"last_seen,omitempty"`
+}
+
+func (sm *SessionManager) capabilitiesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	capturedUnused := map[string]bool{
+		"Read Receipts":   true,
+		"Typing Presence": true,
+	}
+	alwaysOn := map[string]bool{
+		"Outgoing Messages": true,
+		"History Sync":      true,
+		"Profile Pictures":  true,
+		"Group Directory":   true,
+		"Media Download":    true,
+		"Media Upload":      true,
+		"Self-Chat Agent":   true,
+	}
+	typeKey := map[string]string{
+		"Text Messages":   "text",
+		"Images":          "image",
+		"Video":           "video",
+		"Audio":           "audio",
+		"Documents":       "document",
+		"Stickers":        "sticker",
+		"Location":        "location",
+		"Live Location":   "live_location",
+		"Contact Cards":   "contact",
+		"Contact Arrays":  "contacts_array",
+		"Reactions":       "reaction",
+		"Poll Creation":   "poll_creation",
+		"Poll Updates":    "poll_update",
+		"Edited Messages": "edited",
+	}
+	definitions := []capabilityRow{
+		{"Text Messages", "active", "MessageSquare", "Plain text from any group, with sender, group, and timestamp.", 0, ""},
+		{"Images", "active", "Image", "Image messages: caption and sender captured; full media downloaded on demand.", 0, ""},
+		{"Video", "active", "Video", "Video messages: caption plus thumbnail; full download on demand.", 0, ""},
+		{"Audio", "active", "Mic", "Voice notes and audio files; transcribed automatically.", 0, ""},
+		{"Documents", "active", "FileText", "PDFs and file attachments; filename and mimetype captured.", 0, ""},
+		{"Stickers", "active", "Smile", "Sticker messages: metadata captured, sticker image not stored.", 0, ""},
+		{"Location", "active", "MapPin", "Static shared locations: latitude, longitude, label, and address.", 0, ""},
+		{"Live Location", "active", "Navigation", "Real-time location streams from any participant.", 0, ""},
+		{"Contact Cards", "active", "Users", "Shared vCards: phone, name, and organisation extracted.", 0, ""},
+		{"Contact Arrays", "active", "Contact", "Multi-contact shares parsed into individual cards.", 0, ""},
+		{"Reactions", "active", "SmilePlus", "Emoji reactions on any observed message.", 0, ""},
+		{"Poll Creation", "active", "BarChart3", "Polls created in groups: options and voters captured.", 0, ""},
+		{"Poll Updates", "active", "Vote", "Per-option vote tally updates as votes come in.", 0, ""},
+		{"Edited Messages", "active", "Pencil", "Edit events re-linked to the original message.", 0, ""},
+		{"Outgoing Messages", "active", "ArrowUpRight", "Messages your phone sends, kept in sync for your own listings.", 0, ""},
+		{"History Sync", "active", "Clock", "Initial backfill of recent messages on first connect.", 0, ""},
+		{"Read Receipts", "captured_unused", "CheckCheck", "Blue-tick events captured but not yet surfaced in the UI.", 0, ""},
+		{"Typing Presence", "captured_unused", "Pencil", "Typing indicators captured but not yet surfaced in the UI.", 0, ""},
+		{"Profile Pictures", "active", "Camera", "Profile picture changes tracked per JID.", 0, ""},
+		{"Group Directory", "active", "Users", "Group metadata: name, participants, admins, and subject changes.", 0, ""},
+		{"Media Download", "active", "Download", "On-demand download of incoming media to workspace storage.", 0, ""},
+		{"Media Upload", "active", "Upload", "Outbound media uploads for sending files, images, and video.", 0, ""},
+		{"Self-Chat Agent", "active", "Bot", "Sends structured replies to your Message Yourself chat so PropAI can act on them.", 0, ""},
+	}
+
+	typeCounts, lastSeenByType := sm.aggregateByType()
+	anyConnected := sm.anyConnected()
+	anySession := len(sm.List()) > 0
+
+	out := computeCapabilityStatuses(definitions, capturedUnused, alwaysOn, typeKey, typeCounts, lastSeenByType, anyConnected, anySession)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"capabilities":  out,
+		"instance":      instanceName,
+		"version":       "2.0.0",
+		"any_connected": anyConnected,
+		"any_session":   anySession,
+	})
+}
+
+// computeCapabilityStatuses applies the live-status rules to a canonical
+// capability list. Exported as a package-level function so it can be unit
+// tested without spinning up a SessionManager.
+func computeCapabilityStatuses(
+	definitions []capabilityRow,
+	capturedUnused map[string]bool,
+	alwaysOn map[string]bool,
+	typeKey map[string]string,
+	typeCounts map[string]int64,
+	lastSeenByType map[string]time.Time,
+	anyConnected bool,
+	anySession bool,
+) []capabilityRow {
+	out := make([]capabilityRow, 0, len(definitions))
+	for _, def := range definitions {
+		entry := def
+		switch {
+		case capturedUnused[entry.Name]:
+			entry.Status = "captured_unused"
+			entry.EvidenceCount = 0
+			entry.LastSeen = ""
+		case alwaysOn[entry.Name]:
+			entry.EvidenceCount = 0
+			entry.LastSeen = ""
+			switch {
+			case anyConnected:
+				entry.Status = "active"
+			case anySession:
+				entry.Status = "partial"
+			default:
+				entry.Status = "not_available"
+			}
+		default:
+			key, ok := typeKey[entry.Name]
+			if !ok {
+				entry.Status = "not_available"
+				entry.EvidenceCount = 0
+				entry.LastSeen = ""
+			} else {
+				count := typeCounts[key]
+				entry.EvidenceCount = count
+				if ts, ok := lastSeenByType[key]; ok && !ts.IsZero() {
+					entry.LastSeen = ts.UTC().Format(time.RFC3339)
+				} else {
+					entry.LastSeen = ""
+				}
+
+				switch {
+				case count > 0:
+					entry.Status = "active"
+				case anySession:
+					entry.Status = "partial"
+				default:
+					entry.Status = "not_available"
+				}
+			}
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+func (sm *SessionManager) profilePictureHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	jidStr := strings.TrimSpace(r.URL.Query().Get("jid"))
+	if jidStr == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "jid is required"})
+		return
+	}
+	jid, err := types.ParseJID(jidStr)
+	if err != nil || jid.IsEmpty() {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "invalid jid"})
+		return
+	}
+	brokerID := strings.TrimSpace(r.URL.Query().Get("broker_id"))
+	session, err := sm.connectedSession(brokerID)
+	if err != nil {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	params := &whatsmeow.GetProfilePictureParams{}
+	if existingID := strings.TrimSpace(r.URL.Query().Get("existing_id")); existingID != "" {
+		params.ExistingID = existingID
+	}
+	picInfo, err := session.client.GetProfilePictureInfo(ctx, jid, params)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	if picInfo == nil {
+		// existing_id matched — picture hasn't changed
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "unchanged": true, "jid": jidStr})
+		return
+	}
+	if picInfo.URL == "" {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "no profile picture"})
+		return
+	}
+	result := map[string]interface{}{
+		"ok":  true,
+		"url": picInfo.URL,
+		"jid": jidStr,
+		"id":  picInfo.ID,
+	}
+	if picInfo.Type != "" {
+		result["type"] = picInfo.Type
+	}
+	json.NewEncoder(w).Encode(result)
+}
+
+func (sm *SessionManager) listHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	sessions := sm.List()
+	result := make([]Status, 0, len(sessions))
+	for _, s := range sessions {
+		result = append(result, s.getStatus())
+	}
+	json.NewEncoder(w).Encode(result)
+}
+
+// aggregateByType returns the sum of per-message-type counters and the most
+// recent timestamp seen for each type across all sessions. Used by
+// /capabilities to drive live per-capability status.
+func (sm *SessionManager) aggregateByType() (map[string]int64, map[string]time.Time) {
+	counts := map[string]int64{}
+	latest := map[string]time.Time{}
+	for _, s := range sm.List() {
+		s.mu.RLock()
+		for k, v := range s.totalByType {
+			counts[k] += v
+		}
+		for k, v := range s.lastSeenByType {
+			if existing, ok := latest[k]; !ok || v.After(existing) {
+				latest[k] = v
+			}
+		}
+		s.mu.RUnlock()
+	}
+	return counts, latest
+}
+
+// anyConnected reports whether any session currently reports Connected=true.
+func (sm *SessionManager) anyConnected() bool {
+	for _, s := range sm.List() {
+		if s.getStatus().Connected {
+			return true
+		}
+	}
+	return false
+}
+
+func (sm *SessionManager) historyBackfillHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	if historySyncDisabled() {
+		w.WriteHeader(http.StatusGone)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    false,
+			"error": "history sync is disabled; live messages and explicit group selection are the supported ingestion path",
+		})
+		return
+	}
+	brokerID := brokerIDFromRequest(r)
+	s := sm.Get(brokerID)
+	if s == nil || s.client == nil || !s.client.IsConnected() {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "whatsapp session is not connected"})
+		return
+	}
+
+	limit := 25
+	count := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		fmt.Sscanf(raw, "%d", &limit)
+	}
+	if raw := r.URL.Query().Get("count"); raw != "" {
+		fmt.Sscanf(raw, "%d", &count)
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if count < 1 {
+		count = 1
+	}
+	if count > 50 {
+		count = 50
+	}
+
+	reqURL := fmt.Sprintf("%s/api/inbox/threads?limit=%d", strings.TrimRight(apiURL, "/"), limit)
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	if token := strings.TrimSpace(os.Getenv("PROPAI_INTERNAL_TOKEN")); token != "" {
+		req.Header.Set("X-PropAI-Internal-Token", token)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": fmt.Sprintf("api returned %d", resp.StatusCode)})
+		return
+	}
+
+	var cursors []inboxThreadCursor
+	if err := json.NewDecoder(resp.Body).Decode(&cursors); err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	requested := 0
+	skipped := 0
+	for _, cursor := range cursors {
+		info, ok := messageInfoFromCursor(cursor)
+		if !ok {
+			skipped++
+			continue
+		}
+		historyReq := s.client.BuildHistorySyncRequest(info, count)
+		if historyReq == nil {
+			skipped++
+			continue
+		}
+		sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, err := s.client.SendPeerMessage(sendCtx, historyReq)
+		cancel()
+		if err != nil {
+			log.Printf("[broker %s] history backfill request failed for %s: %v", brokerID, info.Chat.String(), err)
+			skipped++
+			continue
+		}
+		requested++
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":             true,
+		"requested":      requested,
+		"skipped":        skipped,
+		"messages_count": count,
+		"note":           "WhatsApp will return history asynchronously through HistorySync events.",
+	})
+}
+
+func messageInfoFromCursor(cursor inboxThreadCursor) (*types.MessageInfo, bool) {
+	data, _ := cursor.RawPayload["data"].(map[string]interface{})
+	key, _ := data["key"].(map[string]interface{})
+	if len(key) == 0 {
+		return nil, false
+	}
+
+	remoteJID := stringFromAny(key["remoteJid"])
+	if remoteJID == "" {
+		remoteJID = strings.TrimSpace(cursor.GroupName)
+	}
+	messageID := stringFromAny(key["id"])
+	if remoteJID == "" || messageID == "" {
+		return nil, false
+	}
+
+	chat, err := types.ParseJID(remoteJID)
+	if err != nil {
+		return nil, false
+	}
+
+	fromMe := boolFromAny(key["fromMe"])
+	participant := stringFromAny(key["participant"])
+	if participant == "" {
+		participant = strings.TrimSpace(cursor.SenderJID)
+	}
+	sender := types.EmptyJID
+	if participant != "" {
+		if parsed, err := types.ParseJID(participant); err == nil {
+			sender = parsed
+		}
+	}
+	if sender.IsEmpty() && !fromMe {
+		sender = chat
+	}
+
+	ts := time.Now()
+	if parsed := timestampFromAny(data["messageTimestamp"]); !parsed.IsZero() {
+		ts = parsed
+	} else if parsed := timestampFromAny(cursor.Timestamp); !parsed.IsZero() {
+		ts = parsed
+	}
+
+	return &types.MessageInfo{
+		MessageSource: types.MessageSource{
+			Chat:     chat,
+			Sender:   sender,
+			IsFromMe: fromMe,
+			IsGroup:  strings.HasSuffix(remoteJID, "@g.us"),
+		},
+		ID:        messageID,
+		PushName:  stringFromAny(data["pushName"]),
+		Timestamp: ts,
+	}, true
+}
+
+func stringFromAny(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case fmt.Stringer:
+		return strings.TrimSpace(v.String())
+	default:
+		return ""
+	}
+}
+
+func boolFromAny(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true")
+	default:
+		return false
+	}
+}
+
+func timestampFromAny(value interface{}) time.Time {
+	switch v := value.(type) {
+	case float64:
+		if v > 10_000_000_000 {
+			v = v / 1000
+		}
+		return time.Unix(int64(v), 0)
+	case int64:
+		if v > 10_000_000_000 {
+			v = v / 1000
+		}
+		return time.Unix(v, 0)
+	case string:
+		if v == "" {
+			return time.Time{}
+		}
+		if parsed, err := time.Parse(time.RFC3339, v); err == nil {
+			return parsed
+		}
+		var numeric float64
+		if _, err := fmt.Sscanf(v, "%f", &numeric); err == nil && numeric > 0 {
+			if numeric > 10_000_000_000 {
+				numeric = numeric / 1000
+			}
+			return time.Unix(int64(numeric), 0)
+		}
+	}
+	return time.Time{}
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// WhatsApp may replay a large history snapshot after pairing or reconnecting.
+// PropAI keeps live ingestion and explicit group selection as the source of
+// new extraction input, so history replay is disabled unless explicitly
+// enabled for a controlled maintenance run.
+func historySyncDisabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("PROPAI_DISABLE_HISTORY_SYNC")))
+	if value == "" {
+		return true
+	}
+	return value != "0" && value != "false" && value != "no" && value != "off"
+}
+
+// selfChatOnlyBroker makes the private WhatsApp control-plane policy explicit
+// and broker-scoped. Other PropAI WhatsApp sessions keep their existing
+// ingestion behaviour. Configure a comma-separated list, for example:
+// PROPAI_SELF_CHAT_ONLY_BROKERS=phone-2e12a9961676
+func selfChatOnlyBroker(brokerID string) bool {
+	brokerID = strings.TrimSpace(brokerID)
+	if brokerID == "" {
+		return false
+	}
+	for _, configured := range strings.Split(os.Getenv("PROPAI_SELF_CHAT_ONLY_BROKERS"), ",") {
+		if strings.TrimSpace(configured) == brokerID {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveDatabaseURL() string {
+	for _, key := range []string{"DATABASE_URL", "SUPABASE_DATABASE_URL", "SUPABASE_DB_URL"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+
+	projectRef := strings.TrimSpace(os.Getenv("SUPABASE_REF"))
+	password := os.Getenv("SUPABASE_DB_PASSWORD")
+	if projectRef == "" || password == "" {
+		return ""
+	}
+
+	connection := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword("postgres", password),
+		Host:     "db." + projectRef + ".supabase.co:5432",
+		Path:     "/postgres",
+		RawQuery: "sslmode=require",
+	}
+	return connection.String()
+}
+
+func parsePort(p string) int {
+	port := 3001
+	fmt.Sscanf(p, "%d", &port)
+	return port
+}
+
+func marshalMessage(msg *waE2E.Message) json.RawMessage {
+	if msg == nil {
+		return json.RawMessage("{}")
+	}
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return json.RawMessage(b)
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────
+
+func main() {
+	log.Printf("starting whatsmeow ingestor (instance: %s)", instanceName)
+	if databaseURL == "" {
+		log.Fatal("database configuration missing: set DATABASE_URL (recommended), SUPABASE_DATABASE_URL, SUPABASE_DB_URL, or both SUPABASE_REF and SUPABASE_DB_PASSWORD")
+	}
+
+	// Open DB connection for broker-device mapping
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		log.Fatalf("error opening database: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS broker_whatsapp_devices (
+		whatsapp_connection_key TEXT PRIMARY KEY,
+		device_jid TEXT NOT NULL,
+		created_at TIMESTAMPTZ DEFAULT NOW(),
+		updated_at TIMESTAMPTZ DEFAULT NOW()
+	)`); err != nil {
+		log.Fatalf("error creating mapping table: %v", err)
+	}
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS broker_whatsapp_device_history (
+		id SERIAL PRIMARY KEY,
+		whatsapp_connection_key TEXT NOT NULL,
+		device_jid TEXT NOT NULL,
+		wiped_at TIMESTAMPTZ DEFAULT NOW(),
+		reason TEXT NOT NULL
+	)`); err != nil {
+		log.Fatalf("error creating history table: %v", err)
+	}
+	if err := ensureGroupMembersTable(db); err != nil {
+		log.Fatalf("error creating group members table: %v", err)
+	}
+
+	// Whatsmeow persists Signal sessions and identity keys while encrypting and
+	// decrypting messages. A single shared connection lets one slow query block
+	// every identity check, which makes outbound self-chat replies fail with a
+	// context deadline instead of sending. Keep this pool deliberately small,
+	// but allow concurrent Signal-store reads and writes.
+	containerDB, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		log.Fatalf("error opening container database: %v", err)
+	}
+	defer containerDB.Close()
+	containerDB.SetMaxOpenConns(4)
+	containerDB.SetMaxIdleConns(2)
+	containerDB.SetConnMaxLifetime(30 * time.Minute)
+	containerDB.SetConnMaxIdleTime(5 * time.Minute)
+
+	ctx := context.Background()
+	container := sqlstore.NewWithDB(containerDB, "postgres", waLog.Noop)
+	if err := container.Upgrade(ctx); err != nil {
+		log.Fatalf("error creating store container: %v", err)
+	}
+
+	sm := NewSessionManager(container, db)
+
+	// Load existing broker sessions from stored device mappings
+	rows, err := db.Query("SELECT whatsapp_connection_key, device_jid FROM broker_whatsapp_devices")
+	if err != nil {
+		log.Printf("error loading existing sessions: %v", err)
+	} else {
+		for rows.Next() {
+			var brokerID, deviceJID string
+			if err := rows.Scan(&brokerID, &deviceJID); err != nil {
+				log.Printf("error scanning row: %v", err)
+				continue
+			}
+			jid, parseErr := types.ParseJID(deviceJID)
+			if parseErr != nil {
+				log.Printf("[broker %s] invalid JID %q: %v", brokerID, deviceJID, parseErr)
+				continue
+			}
+			device, getErr := container.GetDevice(ctx, jid)
+			if getErr != nil {
+				log.Printf("[broker %s] error getting device: %v", brokerID, getErr)
+				continue
+			}
+			if device == nil {
+				log.Printf("[broker %s] device %q not found in store, removing mapping", brokerID, deviceJID)
+				db.Exec("DELETE FROM broker_whatsapp_devices WHERE whatsapp_connection_key=$1", brokerID)
+				continue
+			}
+			lockConn, locked, lockErr := sm.acquireBrokerLock(ctx, brokerID)
+			if lockErr != nil {
+				log.Printf("[broker %s] error acquiring session lock during restore: %v", brokerID, lockErr)
+				continue
+			}
+			if !locked {
+				log.Printf("[broker %s] deployment handoff pending because another ingestor instance owns the lock", brokerID)
+				go sm.restoreSessionWhenAvailable(brokerID)
+				continue
+			}
+			session := sm.newSession(brokerID, device)
+			session.lockConn = lockConn
+			sm.mu.Lock()
+			sm.sessions[brokerID] = session
+			sm.mu.Unlock()
+			sm.sessionWg.Add(1)
+			go sm.runSession(session)
+			log.Printf("[broker %s] session restored from device %q", brokerID, deviceJID)
+		}
+		rows.Close()
+	}
+
+	// HTTP server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", internalOnly(sm.healthHandler, true))
+	mux.HandleFunc("/connect", internalOnly(sm.connectHandler, false))
+	mux.HandleFunc("/sync-groups", internalOnly(sm.syncGroupsHandler, false))
+	mux.HandleFunc("/pair-code", internalOnly(sm.pairCodeHandler, false))
+	mux.HandleFunc("/pair-code/start", internalOnly(sm.pairCodeStartHandler, false))
+	mux.HandleFunc("/pair-code/status", internalOnly(sm.pairCodeStatusHandler, false))
+	mux.HandleFunc("/reset", internalOnly(sm.resetHandler, false))
+	mux.HandleFunc("/disconnect", internalOnly(sm.disconnectHandler, false))
+	mux.HandleFunc("/delete-session", internalOnly(sm.deleteSessionHandler, false))
+	mux.HandleFunc("/send-message", internalOnly(sm.sendMessageHandler, false))
+	mux.HandleFunc("/send-media", internalOnly(sm.sendMediaHandler, false))
+	mux.HandleFunc("/list", internalOnly(sm.listHandler, false))
+	mux.HandleFunc("/history/backfill", internalOnly(sm.historyBackfillHandler, false))
+	mux.HandleFunc("/profile-picture", internalOnly(sm.profilePictureHandler, false))
+	mux.HandleFunc("/capabilities", internalOnly(sm.capabilitiesHandler, true))
+
+	server := &http.Server{
+		Addr:         ":" + sendPort,
+		Handler:      recoveryMiddleware(mux),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	go func() {
+		log.Printf("HTTP server listening on port %s", sendPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}()
+
+	// Wait for shutdown signal
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+	<-c
+
+	log.Printf("shutting down...")
+
+	// Cancel all broker sessions — this signals runSession goroutines to disconnect
+	sm.mu.RLock()
+	for _, s := range sm.sessions {
+		if s.cancel != nil {
+			s.cancel()
+		}
+	}
+	sm.mu.RUnlock()
+
+	// Wait for all session goroutines to finish their disconnect dance
+	waitDone := make(chan struct{})
+	go func() {
+		sm.sessionWg.Wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+		log.Printf("all sessions disconnected gracefully")
+	case <-time.After(10 * time.Second):
+		log.Printf("timed out waiting for sessions to disconnect")
+	}
+
+	ctxShutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server.Shutdown(ctxShutdown)
+}
+
+func getEnvInt(key string, fallback int) int {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	var intVal int
+	if _, err := fmt.Sscanf(val, "%d", &intVal); err != nil {
+		return fallback
+	}
+	return intVal
+}
