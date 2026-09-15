@@ -37,6 +37,6 @@ Composio automation is enabled only when `COMPOSIO_API_KEY`, `COMPOSIO_AUTOMATIO
 
 WhatsMeow publishing requires `CHARIOT_WHATSAPP_INGESTOR_URL`, `CHARIOT_WHATSAPP_INTERNAL_TOKEN`, `CHARIOT_WHATSAPP_BROKER_ID`, and `CHARIOT_WHATSAPP_SELF_JID`. The route never accepts an arbitrary recipient or arbitrary image URL: it only publishes the seeded Chariot Realty inventory to the configured self-chat.
 
-The broker agent requires `PROPAI_API_URL` and `PROPAI_INTERNAL_TOKEN` on the Chariot API. These credentials stay server-side; the browser only receives the agent response. PropAI remains the ingestion, extraction, memory, and action-policy backend for Kapil's tenant.
+The broker agent requires `PROPAI_API_URL` and `PROPAI_INTERNAL_TOKEN` on the Chariot API. These credentials stay server-side; the browser only receives the agent response. PropAI remains the ingestion, extraction, and persistent memory backend for Kapil's tenant. Chariot-specific publish actions are treated as drafts until Kapil explicitly confirms `PUBLISH TO CHARIOT`.
 
 The owner desk uses Supabase Auth and allows the account configured in `SUPABASE_ADMIN_EMAIL`. Sarvam AI variables are reserved as `SARVAM_API_KEY`, `SARVAM_API_URL`, and `SARVAM_MODEL`; add the API key in Coolify when ready.

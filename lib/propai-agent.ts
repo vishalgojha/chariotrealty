@@ -1,5 +1,7 @@
 type AgentResponse = { reply?: string; error?: string; message?: string };
 
+const CHARIOT_AGENT_CONTEXT = `You are Kapil's Chariot Realty agent. PropAI is the intelligence and memory backend; Chariot Realty is the public publishing destination. Keep these actions separate: (1) search/read PropAI group evidence, (2) save inventory privately for Kapil, (3) share inventory to the PropAI marketplace, and (4) publish inventory to the Chariot Realty website. Never claim an item is on the Chariot website unless Chariot has explicitly confirmed the publish action. For a Chariot website request, collect the listing details and photos, show a concise preview, and ask Kapil to confirm with exactly: PUBLISH TO CHARIOT. Treat any other wording as a draft or private save. Remember Kapil's confirmed preferences and private inventory in the tenant workspace.`;
+
 function config() {
   return {
     baseUrl: (process.env.PROPAI_API_URL || "https://api.propai.live").replace(/\/$/, ""),
@@ -20,7 +22,7 @@ export async function askPropAIAgent(text: string) {
       "Content-Type": "application/json",
       "X-PropAI-Internal-Token": token,
     },
-    body: JSON.stringify({ broker_id: brokerId, sender_jid: senderJid, text }),
+    body: JSON.stringify({ broker_id: brokerId, sender_jid: senderJid, text: `${CHARIOT_AGENT_CONTEXT}\n\nKapil's request:\n${text}` }),
     cache: "no-store",
   });
 
