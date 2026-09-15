@@ -35,6 +35,9 @@ export default function AdminPage() {
   const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "forgot" | "update">("login");
+  const [resetToken, setResetToken] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
   const [leadStatus, setLeadStatus] = useState("new");
   const [leadError, setLeadError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -59,6 +62,9 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const queryReset = new URLSearchParams(window.location.search).get("reset");
+    if (hash.get("access_token") && (hash.get("type") === "recovery" || queryReset)) { setResetToken(hash.get("access_token") || ""); setAuthMode("update"); window.history.replaceState({}, "", "/admin?reset=1"); }
     const saved = window.localStorage.getItem("chariot_supabase_session") || window.sessionStorage.getItem("chariot_supabase_session");
     if (saved) {
       try {
@@ -123,6 +129,9 @@ export default function AdminPage() {
     } catch (error) { setAuthError(error instanceof Error ? error.message : "Could not sign in"); }
     finally { setAuthLoading(false); }
   }
+
+  async function requestPasswordReset(event: FormEvent) { event.preventDefault(); setAuthError(""); setAuthLoading(true); try { const response = await fetch(apiUrl("/api/auth/reset"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "request", email: authEmail }) }); const payload = await readJson(response); if (!response.ok) throw new Error(payload.error || "Could not send reset email"); setResetMessage("If that email belongs to Chariot, a reset link is on its way."); } catch (error) { setAuthError(error instanceof Error ? error.message : "Could not send reset email"); } finally { setAuthLoading(false); } }
+  async function updatePassword(event: FormEvent) { event.preventDefault(); setAuthError(""); setAuthLoading(true); const form = new FormData(event.currentTarget as HTMLFormElement); const password = String(form.get("new_password") || ""); const confirm = String(form.get("confirm_password") || ""); if (password !== confirm) { setAuthError("Passwords do not match"); setAuthLoading(false); return; } try { const response = await fetch(apiUrl("/api/auth/reset"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", access_token: resetToken, password }) }); const payload = await readJson(response); if (!response.ok) throw new Error(payload.error || "Could not update password"); setAuthMode("login"); setResetMessage("Password updated. You can sign in now."); window.history.replaceState({}, "", "/admin"); } catch (error) { setAuthError(error instanceof Error ? error.message : "Could not update password"); } finally { setAuthLoading(false); } }
 
   function logout() {
     window.localStorage.removeItem("chariot_supabase_session");
@@ -265,7 +274,7 @@ export default function AdminPage() {
   }
 
   if (!authReady) return <main className="admin-shell"><div className="auth-card"><p className="eyebrow">Chariot Realty · Private desk</p><h1>Loading secure workspace…</h1></div></main>;
-  if (!authToken) return <main className="admin-shell auth-shell"><form className="auth-card" onSubmit={login}><p className="eyebrow">Chariot Realty · Mumbai</p><h1>Owner login</h1><p className="admin-muted">Sign in with your Supabase account to open the private market desk.</p><label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required /></label><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required /></label><label className="auth-remember"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /> Keep me signed in on this device</label>{authError && <p className="error-note">{authError}</p>}<button type="submit" className="dark-button auth-submit" disabled={authLoading}>{authLoading ? "Signing in…" : "Sign in securely"}</button><a href="/" className="back-link auth-back">← Public site</a></form></main>;
+  if (!authToken) return <main className="admin-shell auth-shell"><form className="auth-card" onSubmit={authMode === "login" ? login : authMode === "forgot" ? requestPasswordReset : updatePassword}><p className="eyebrow">Chariot Realty · Mumbai</p><h1>{authMode === "login" ? "Owner login" : authMode === "forgot" ? "Reset password" : "Choose a new password"}</h1><p className="admin-muted">{authMode === "login" ? "Sign in with your Supabase account to open the private market desk." : authMode === "forgot" ? "We’ll email a secure reset link to your Chariot account." : "Set a new password for your Chariot account."}</p>{authMode !== "update" && <label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required /></label>}{authMode === "login" && <><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required /></label><label className="auth-remember"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /> Keep me signed in on this device</label></>}{authMode === "update" && <><label>New password<input name="new_password" type="password" autoComplete="new-password" minLength={8} required /></label><label>Confirm password<input name="confirm_password" type="password" autoComplete="new-password" minLength={8} required /></label></>}{resetMessage && <p className="success-note">{resetMessage}</p>}{authError && <p className="error-note">{authError}</p>}<button type="submit" className="dark-button auth-submit" disabled={authLoading}>{authLoading ? "Please wait…" : authMode === "login" ? "Sign in securely" : authMode === "forgot" ? "Email reset link" : "Update password"}</button>{authMode === "login" && <button type="button" className="auth-text-button" onClick={() => { setAuthMode("forgot"); setAuthError(""); }}>Forgot password?</button>}{authMode !== "login" && authMode !== "update" && <button type="button" className="auth-text-button" onClick={() => { setAuthMode("login"); setResetMessage(""); }}>← Back to sign in</button>}<a href="/" className="back-link auth-back">← Public site</a></form></main>;
 
   return (
     <main className="admin-shell">

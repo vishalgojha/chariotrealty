@@ -35,6 +35,21 @@ export async function refreshSupabaseSession(refreshToken: string) {
   return payload;
 }
 
+export async function requestSupabasePasswordReset(email: string) {
+  const { url, anonKey } = authConfig();
+  if (!url || !anonKey) throw new Error("Supabase Auth is not configured");
+  const response = await fetch(`${url}/auth/v1/recover`, { method: "POST", headers: { apikey: anonKey, "Content-Type": "application/json" }, body: JSON.stringify({ email, redirect_to: "https://app.chariotrealty.in/admin?reset=1" }), cache: "no-store" });
+  if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.msg || payload.error_description || "Could not send password reset email"); }
+}
+
+export async function updateSupabasePassword(accessToken: string, password: string) {
+  const { url, anonKey } = authConfig();
+  if (!url || !anonKey) throw new Error("Supabase Auth is not configured");
+  const response = await fetch(`${url}/auth/v1/user`, { method: "PUT", headers: { apikey: anonKey, Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ password }), cache: "no-store" });
+  if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.msg || payload.error_description || "Could not update password"); }
+  return response.json();
+}
+
 export async function getSupabaseUser(accessToken: string): Promise<SupabaseUser | null> {
   const { url, anonKey } = authConfig();
   if (!url || !anonKey || !accessToken) return null;

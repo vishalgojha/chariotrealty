@@ -14,6 +14,7 @@ The API is available under `/api` on the deployed Next.js service.
 - `GET /api/automation/status` — reports whether Composio lead automation is configured.
 - `POST /api/automation/lead` — admin-only manual automation replay for an existing lead.
 - `POST /api/auth/login` — Supabase email/password login for the private owner desk.
+- `POST /api/auth/reset` — self-service password reset email and secure password update.
 - `GET /api/whatsapp/status` — admin-only WhatsMeow connection status.
 - `POST /api/whatsapp/connect` — admin-only start/reconnect for the Chariot WhatsApp device.
 - `POST /api/whatsapp/pair` — admin-only WhatsMeow phone-number pairing flow.
