@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [authReady, setAuthReady] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [leadStatus, setLeadStatus] = useState("new");
@@ -49,7 +50,7 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("chariot_supabase_session");
+    const saved = window.localStorage.getItem("chariot_supabase_session") || window.sessionStorage.getItem("chariot_supabase_session");
     if (saved) {
       try {
         const session = JSON.parse(saved);
@@ -64,14 +65,40 @@ export default function AdminPage() {
 
   const filteredProperties = useMemo(() => properties.filter((property) => `${property.name} ${property.locality} ${property.category}`.toLowerCase().includes(query.toLowerCase())), [properties, query]);
   const authHeaders = (): Record<string, string> => authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  function saveSession(session: Record<string, any>) {
+    const serialized = JSON.stringify(session);
+    window.localStorage.removeItem("chariot_supabase_session");
+    window.sessionStorage.removeItem("chariot_supabase_session");
+    (keepSignedIn ? window.localStorage : window.sessionStorage).setItem("chariot_supabase_session", serialized);
+    setAuthToken(session.access_token || "");
+  }
+
+  async function refreshSession() {
+    const saved = window.localStorage.getItem("chariot_supabase_session") || window.sessionStorage.getItem("chariot_supabase_session");
+    if (!saved) return false;
+    try {
+      const session = JSON.parse(saved);
+      if (!session.refresh_token) return false;
+      const response = await fetch(apiUrl("/api/auth/login"), { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ refresh_token: session.refresh_token }) });
+      if (!response.ok) return false;
+      const refreshed = await readJson(response);
+      saveSession(refreshed);
+      return Boolean(refreshed.access_token);
+    } catch { return false; }
+  }
+
   async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-    const response = await fetch(input, { ...init, headers: { ...authHeaders(), ...(init.headers || {}) } });
+    let response = await fetch(input, { ...init, headers: { ...authHeaders(), ...(init.headers || {}) } });
     if (response.status === 401) {
-      window.localStorage.removeItem("chariot_supabase_session");
-      setAuthToken("");
-      setWhatsappStatus(null);
-      setLeads([]);
-      setAuthError("Your secure session expired. Please sign in again.");
+      if (await refreshSession()) {
+        response = await fetch(input, { ...init, headers: { ...authHeaders(), ...(init.headers || {}) } });
+      }
+      if (response.status === 401) {
+        window.localStorage.removeItem("chariot_supabase_session");
+        window.sessionStorage.removeItem("chariot_supabase_session");
+        setAuthToken(""); setWhatsappStatus(null); setLeads([]);
+        setAuthError("Your secure session expired. Please sign in again.");
+      }
     }
     return response;
   }
@@ -82,14 +109,15 @@ export default function AdminPage() {
       const response = await fetch(apiUrl("/api/auth/login"), { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ email: authEmail, password: authPassword }) });
       const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || "Could not sign in");
-      window.localStorage.setItem("chariot_supabase_session", JSON.stringify(payload));
-      setAuthToken(payload.access_token); setAuthPassword("");
+      saveSession(payload);
+      setAuthPassword("");
     } catch (error) { setAuthError(error instanceof Error ? error.message : "Could not sign in"); }
     finally { setAuthLoading(false); }
   }
 
   function logout() {
     window.localStorage.removeItem("chariot_supabase_session");
+    window.sessionStorage.removeItem("chariot_supabase_session");
     setAuthToken(""); setLeads([]); setWhatsappStatus(null);
   }
 
@@ -210,7 +238,7 @@ export default function AdminPage() {
   }
 
   if (!authReady) return <main className="admin-shell"><div className="auth-card"><p className="eyebrow">Chariot Realty · Private desk</p><h1>Loading secure workspace…</h1></div></main>;
-  if (!authToken) return <main className="admin-shell auth-shell"><form className="auth-card" onSubmit={login}><p className="eyebrow">Chariot Realty · Mumbai</p><h1>Owner login</h1><p className="admin-muted">Sign in with your Supabase account to open the private market desk.</p><label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required /></label><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required /></label>{authError && <p className="error-note">{authError}</p>}<button type="submit" className="dark-button auth-submit" disabled={authLoading}>{authLoading ? "Signing in…" : "Sign in securely"}</button><a href="/" className="back-link auth-back">← Public site</a></form></main>;
+  if (!authToken) return <main className="admin-shell auth-shell"><form className="auth-card" onSubmit={login}><p className="eyebrow">Chariot Realty · Mumbai</p><h1>Owner login</h1><p className="admin-muted">Sign in with your Supabase account to open the private market desk.</p><label>Email<input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required /></label><label>Password<input type="password" autoComplete="current-password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required /></label><label className="auth-remember"><input type="checkbox" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /> Keep me signed in on this device</label>{authError && <p className="error-note">{authError}</p>}<button type="submit" className="dark-button auth-submit" disabled={authLoading}>{authLoading ? "Signing in…" : "Sign in securely"}</button><a href="/" className="back-link auth-back">← Public site</a></form></main>;
 
   return (
     <main className="admin-shell">

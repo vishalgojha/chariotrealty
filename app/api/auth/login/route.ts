@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAllowedSupabaseAdmin, signInWithPassword } from "@/lib/supabase-auth";
+import { isAllowedSupabaseAdmin, refreshSupabaseSession, signInWithPassword } from "@/lib/supabase-auth";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    if (body.refresh_token) {
+      const session = await refreshSupabaseSession(String(body.refresh_token));
+      if (!session.user || !isAllowedSupabaseAdmin(session.user)) return NextResponse.json({ error: "This Supabase account is not authorized for Chariot Realty." }, { status: 403 });
+      return NextResponse.json(session);
+    }
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
     if (!email || !password) return NextResponse.json({ error: "Email and password are required" }, { status: 422 });
