@@ -16,6 +16,7 @@ The API is available under `/api` on the deployed Next.js service.
 - `POST /api/whatsapp/pair` — admin-only WhatsMeow phone-number pairing flow.
 - `POST /api/whatsapp/reset` — admin-only destructive unlink/reset before pairing a new WhatsApp device.
 - `POST /api/whatsapp/publish` — preview or publish one allowlisted Chariot-owned listing to the configured self-chat, including its image.
+- `POST /api/agent/chat` — authenticated Kapil-only broker agent proxy to the tenant-scoped PropAI self-chat and extraction tools.
 
 Example lead body:
 
@@ -35,5 +36,7 @@ Lead storage uses the `public.chariot_leads` table in the configured Supabase pr
 Composio automation is enabled only when `COMPOSIO_API_KEY`, `COMPOSIO_AUTOMATION_ENABLED=true`, and `CHARIOT_OWNER_EMAIL` are configured. A new lead then sends an owner notification through `GMAIL_SEND_EMAIL`. Connect Gmail with `composio link gmail` before enabling the workflow.
 
 WhatsMeow publishing requires `CHARIOT_WHATSAPP_INGESTOR_URL`, `CHARIOT_WHATSAPP_INTERNAL_TOKEN`, `CHARIOT_WHATSAPP_BROKER_ID`, and `CHARIOT_WHATSAPP_SELF_JID`. The route never accepts an arbitrary recipient or arbitrary image URL: it only publishes the seeded Chariot Realty inventory to the configured self-chat.
+
+The broker agent requires `PROPAI_API_URL` and `PROPAI_INTERNAL_TOKEN` on the Chariot API. These credentials stay server-side; the browser only receives the agent response. PropAI remains the ingestion, extraction, memory, and action-policy backend for Kapil's tenant.
 
 The owner desk uses Supabase Auth and allows the account configured in `SUPABASE_ADMIN_EMAIL`. Sarvam AI variables are reserved as `SARVAM_API_KEY`, `SARVAM_API_URL`, and `SARVAM_MODEL`; add the API key in Coolify when ready.
