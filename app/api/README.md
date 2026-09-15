@@ -6,6 +6,9 @@ The API is available under `/api` on the deployed Next.js service.
 
 - `GET /api/health` — deployment health check.
 - `GET /api/properties?locality=BKC&category=commercial` — filtered Mumbai inventory. Supported filters: `locality`, `category`, `configuration`, `minCarpet`, `maxCarpet`.
+- `GET /api/inventory?admin=1` — admin-only Chariot CMS inventory.
+- `POST /api/inventory` and `PATCH /api/inventory/:id` — create, edit, approve, publish, or archive inventory.
+- `POST /api/inventory/images` — upload inventory images to the Chariot Supabase Storage bucket.
 - `GET /api/markets` — supported Mumbai micro-market metadata.
 - `POST /api/leads` — validates and accepts a Mumbai buyer, renter, seller, or investor enquiry.
 - `GET /api/automation/status` — reports whether Composio lead automation is configured.
