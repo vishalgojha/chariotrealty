@@ -9,6 +9,18 @@ create table if not exists public.chariot_properties (
   owner_name text not null default 'Kapil Gopal Ojha', published_at timestamptz,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
+alter table public.chariot_properties add column if not exists custom_fields jsonb not null default '{}'::jsonb;
+create table if not exists public.chariot_inventory_fields (
+  id uuid primary key default gen_random_uuid(),
+  field_key text not null unique,
+  label text not null,
+  field_type text not null default 'text' check (field_type in ('text','textarea','number','boolean','date','url')),
+  required boolean not null default false,
+  sort_order integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table public.chariot_inventory_fields enable row level security;
 create table if not exists public.chariot_property_images (
   id uuid primary key default gen_random_uuid(), property_id uuid not null references public.chariot_properties(id) on delete cascade,
   storage_path text not null, public_url text not null, alt_text text, sort_order integer not null default 0, created_at timestamptz not null default now()
