@@ -58,7 +58,7 @@ export async function requestSupabasePasswordReset(email: string) {
         from: process.env.RESEND_FROM_EMAIL || "Chariot Realty <onboarding@resend.dev>",
         to: [email],
         subject: "Reset your Chariot Realty password",
-        html: `<p>Use the secure link below to set a new Chariot Realty password:</p><p><a href="${linkPayload.action_link}">Reset password</a></p><p>This link expires soon. If you did not request this, you can ignore this email.</p>`,
+        html: `<p>Use the secure link below to set a new Chariot Realty password:</p><p><a href="${(() => { const link = new URL(linkPayload.action_link); link.searchParams.set("redirect_to", "https://app.chariotrealty.in/admin?reset=1"); return link.toString(); })()}">Reset password</a></p><p>This link expires soon. If you did not request this, you can ignore this email.</p>`,
       }),
       cache: "no-store",
     });
