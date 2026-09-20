@@ -1,7 +1,7 @@
 export type AgentMessage = { role: "user" | "agent"; text: string };
 
 const SARVAM_MODEL = "sarvam-105b";
-const SARVAM_URL = "https://api.sarvam.ai/v2/chat/completions";
+const SARVAM_URL = "https://api.sarvam.ai/v1/chat/completions";
 
 const SYSTEM_PROMPT = `You are Kapil's Chariot Realty assistant — a calm, friendly real-estate helper, not a chatbot demo. Kapil is a busy property owner; he is not a technical person and does not read long menus or jargon.
 
