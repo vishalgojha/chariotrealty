@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { readJson } from "../lib/api";
 import type { AdminApi } from "../hooks/use-admin-auth";
 import { Note, Panel, PanelHead } from "./ui";
@@ -18,6 +18,58 @@ const OPENING: Message = {
   role: "agent",
   text: "Hi Kapil 👋 Ask me anything. I'm your Chariot assistant — I can find listings, match buyers' requirements, check who enquired on the website, and save things to your inventory for later.",
 };
+
+function renderInline(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).filter(Boolean).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index}>{part.slice(1, -1)}</code>;
+    if (part.startsWith("*") && part.endsWith("*")) return <em key={index}>{part.slice(1, -1)}</em>;
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function MarkdownMessage({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const blocks: ReactNode[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    const unordered: string[] = [];
+    const ordered: string[] = [];
+    while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
+      unordered.push(lines[index].trim().replace(/^[-*]\s+/, ""));
+      index += 1;
+    }
+    while (index < lines.length && /^\d+[.)]\s+/.test(lines[index].trim())) {
+      ordered.push(lines[index].trim().replace(/^\d+[.)]\s+/, ""));
+      index += 1;
+    }
+    if (unordered.length) {
+      blocks.push(<ul key={`ul-${index}`}>{unordered.map((item, itemIndex) => <li key={itemIndex}>{renderInline(item)}</li>)}</ul>);
+      continue;
+    }
+    if (ordered.length) {
+      blocks.push(<ol key={`ol-${index}`}>{ordered.map((item, itemIndex) => <li key={itemIndex}>{renderInline(item)}</li>)}</ol>);
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      blocks.push(<strong className="agent-markdown-heading" key={`heading-${index}`}>{renderInline(heading[2])}</strong>);
+    } else {
+      blocks.push(<p key={`p-${index}`}>{renderInline(line)}</p>);
+    }
+    index += 1;
+  }
+
+  return <div className="agent-markdown">{blocks}</div>;
+}
 
 export function AskTab({ api }: { api: AdminApi }) {
   const [prompt, setPrompt] = useState("");
@@ -73,13 +125,13 @@ export function AskTab({ api }: { api: AdminApi }) {
           {messages.map((message, index) => (
             <div key={index} className={`agent-msg ${message.role}`}>
               <span className="agent-msg-label">{message.role === "user" ? "You" : "Assistant"}</span>
-              <p>{message.text}</p>
+               {message.role === "agent" ? <MarkdownMessage text={message.text} /> : <p>{message.text}</p>}
             </div>
           ))}
           {busy && (
             <div className="agent-msg agent">
               <span className="agent-msg-label">Assistant</span>
-              <p>Thinking…</p>
+               <p className="agent-thinking"><span />Thinking…</p>
             </div>
           )}
           {!busy && (
