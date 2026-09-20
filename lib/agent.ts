@@ -13,8 +13,10 @@ HOW TO ANSWER
 - Never invent data. If the tools return nothing, say "I don't have that yet" and offer the closest real match or ask him for the details to save.
 
 ACTION CONFIRMATION
-When Kapil dictates a new property, save it as a draft with create_listing — that is private to Chariot, go ahead and confirm it in one line ("Saved as a draft: 2 BHK, Bandra West, ₹3.2 crore. You'll find it in Inventory under Draft — say the word when you want to publish it."). Never create it as published.
-Publishing something to the Chariot Realty website requires Kapil's explicit confirmation. The only allowed publish-confirmation phrase is exactly: PUBLISH TO CHARIOT. Anything else means draft or private save. Never claim something is live on the Chariot website unless the publish actually completed.`;
+- When Kapil dictates a new property, save it as a draft with create_listing. This writes to Chariot's INTERNAL inventory — private, never shown on the website. Confirm in one line ("Saved as a draft: 2 BHK, Bandra West, ₹3.2 crore. To put it on the website, open Inventory in the admin panel and click Publish.").
+- Updating or deleting an internal draft: use update_listing when Kapil corrects a saved property; use delete_listing only after he clearly confirms deletion.
+- TWO SYSTEMS: Chariot keeps an internal (private) inventory and a website (public) inventory separate. Tools create_listing/update_listing/delete_listing/search_listings/search_requirements/search_leads only touch the INTERNAL side. Nothing you do can or should put a property on the public Chariot website — that only happens via the Inventory tab in the admin panel.
+- Never claim something is live on the Chariot website unless you have confirmed it was published there.`;
 
 type SarvamToolCall = {
   id: string;
@@ -127,28 +129,76 @@ const TOOLS = [
     function: {
       name: "create_listing",
       description:
-        "Create a new property draft in Kapil's inventory when he dictates one (e.g. \"2 BHK in Bandra West, 1100 sqft, ₹3.2 crore, semi-furnished, sea view\"). The draft shows up in the Inventory tab and can be approved/published later. Only call this when the user is dictating a NEW property. Price is the display string; price_value is the number in the given unit if clear.",
+        "Create a new INTERNAL (private) property draft in Kapil's inventory when he dictates one (e.g. \"2 BHK in Bandra West, 1100 sqft, ₹3.2 crore, semi-furnished, sea view\"). Internal drafts are private to Chariot — they never show on the website. Only call this when the user is dictating a NEW property.",
       parameters: {
         type: "object",
         properties: {
           name: { type: "string", description: "Property/building name, or a short title. Required." },
-          category: { type: "string", enum: ["residential", "commercial", "under-construction"], description: "Default residential." },
+          category: { type: "string", enum: ["residential", "commercial"], description: "Default residential." },
+          transaction: { type: "string", enum: ["sale", "rent"], description: "Default sale." },
           locality: { type: "string", description: "Locality e.g. Bandra West. Required." },
           micro_market: { type: "string", description: "Micro-market e.g. Bandra West." },
-          location: { type: "string", description: "Detailed location e.g. Hill Road, Bandra West." },
-          price: { type: "string", description: "Display price text e.g. ₹3.2 crore or ₹85,000 / month." },
-          price_value: { type: "number", description: "Numeric value in the price_unit (e.g. 32000000 for total price, 85000 for monthly rent)." },
-          price_unit: { type: "string", enum: ["total_price", "monthly_rent", "sqft"], description: "What price_value represents." },
-          configuration: { type: "string", description: "e.g. 2 BHK, 3 BHK, Office." },
+          summary_title: { type: "string", description: "Short headline for the listing, default to the name." },
+          bhk: { type: "number", description: "Number of bedrooms for residential (1, 2, 3...)." },
+          configuration_type: { type: "string", description: "e.g. '2 BHK - 1 Hall - 2 Bathroom'." },
           carpet_area_sqft: { type: "number", description: "Carpet area in sq ft." },
-          possession: { type: "string", description: "e.g. Ready to move, Dec 2026." },
-          parking: { type: "number", description: "Car parking count." },
-          rera_approved: { type: "boolean", description: "RERA approved yes/no." },
-          image_url: { type: "string", description: "Image URL if the user provided or pasted one." },
-          description: { type: "string", description: "1-2 sentence description." },
-          furnishing: { type: "string", description: "e.g. Semi-Furnished, Furnished, Unfurnished." },
+          total_asking_price: { type: "number", description: "Asking price in ₹ for a sale listing (total)." },
+          monthly_rent: { type: "number", description: "Monthly rent in ₹ for a rental listing." },
+          price_raw_text: { type: "string", description: "How Kapil said the price, e.g. '₹3.2 crore' or '85k/month'." },
+          furnishing_status: { type: "string", description: "e.g. Semi-Furnished, Furnished, Unfurnished." },
+          possession_status: { type: "string", description: "e.g. Ready to move, Dec 2026." },
+          car_parking_count: { type: "number", description: "Car parking count." },
+          description: { type: "string", description: "Extra notes Kapil gave (view, amenities, pets, terms)." },
         },
         required: ["name", "locality"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_listing",
+      description:
+        "Update an existing INTERNAL (private) listing Kapil already saved. He says e.g. \"my Khar 2 BHK — the price is now ₹3.6 crore\" or \"call it Sea Pearl instead\". Use the id from a previous search. Fields given are replaced; id and category/transaction decide which table.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Listing id from a previous search/create. Required." },
+          category: { type: "string", enum: ["residential", "commercial"] },
+          transaction: { type: "string", enum: ["sale", "rent"] },
+          building_name: { type: "string" },
+          locality: { type: "string" },
+          micro_market: { type: "string" },
+          summary_title: { type: "string" },
+          bhk: { type: "number" },
+          configuration_type: { type: "string" },
+          carpet_area_sqft: { type: "number" },
+          total_asking_price: { type: "number" },
+          monthly_rent: { type: "number" },
+          price_raw_text: { type: "string" },
+          furnishing_status: { type: "string" },
+          possession_status: { type: "string" },
+          car_parking_count: { type: "number" },
+          description: { type: "string", description: "Appends as a broker note (plain text)." },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_listing",
+      description:
+        "Delete an INTERNAL listing Kapil explicitly wants removed. Only call AFTER Kapil clearly confirms he wants it deleted (e.g. \"yes delete it\"). id from a previous search/create.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Internal listing id to delete. Required." },
+          category: { type: "string", enum: ["residential", "commercial"] },
+          transaction: { type: "string", enum: ["sale", "rent"] },
+        },
+        required: ["id"],
       },
     },
   },
@@ -221,6 +271,7 @@ async function searchListings(args: SearchArgs): Promise<string> {
 
   const parts = [`select=*`, `order=created_at.desc`, `limit=${Math.min(args.limit ?? 5, 10)}`];
   parts.push(suppressArchived(table));
+  parts.push(`visibility=eq.internal`);
   if (args.locality) {
     parts.push(`or=(locality_raw.ilike.*${encodeURIComponent(args.locality)}*,locality_resolved.ilike.*${encodeURIComponent(args.locality)}*,micro_market.ilike.*${encodeURIComponent(args.locality)}*,summary_title.ilike.*${encodeURIComponent(args.locality)}*)`);
   }
@@ -242,6 +293,7 @@ async function searchRequirements(args: SearchArgs): Promise<string> {
 
   const parts = [`select=*`, `order=created_at.desc`, `limit=${Math.min(args.limit ?? 5, 10)}`];
   parts.push(suppressArchived(table));
+  parts.push(`visibility=eq.internal`);
   if (args.locality) {
     parts.push(`or=(locality_raw.ilike.*${encodeURIComponent(args.locality)}*,locality_resolved.ilike.*${encodeURIComponent(args.locality)}*,micro_market.ilike.*${encodeURIComponent(args.locality)}*,locality_options.cs.{"${encodeURIComponent(args.locality)}"})`);
   }
@@ -269,53 +321,160 @@ async function searchLeads(args: { locality?: string; limit?: number }): Promise
   return JSON.stringify({ results });
 }
 
-function slugify(text: string) {
-  return text
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/[\s_]+/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 60);
+function stubBuilder(table: string, category: string): Record<string, unknown> {
+  return table.includes("_commercial_")
+    ? { permitted_use_types: [] }
+    : { building_amenities: [], unit_amenities: [] };
+}
+
+function listingTable(category: string, transaction: string) {
+  return LISTING_TABLE[`${category}/${transaction}`] || null;
+}
+
+function noRow(message: string): string {
+  return JSON.stringify({ error: message });
 }
 
 async function createListing(args: Record<string, unknown>): Promise<string> {
   const name = String(args.name || "").trim();
   const locality = String(args.locality || "").trim();
-  if (!name || !locality) return JSON.stringify({ error: "Listing needs at least a name and a locality." });
+  if (!name || !locality) return noRow("Listing needs at least a name and a locality.");
 
-  const price = String(args.price ?? "").trim() || `${args.price_value ?? ""}`.trim();
+  const category = String(args.category || "residential");
+  const transaction = String(args.transaction || "sale");
+  const table = listingTable(category, transaction);
+  if (!table) return noRow(`I don't support ${category}/${transaction} yet.`);
+
   const payload: Record<string, unknown> = {
-    slug: slugify(name),
-    name,
-    category: args.category || "residential",
-    locality,
+    ...stubBuilder(table, category),
+    asset_type: category,
+    transaction_type: transaction,
+    building_name: name,
+    locality_raw: locality,
+    locality_resolved: locality,
     micro_market: args.micro_market || locality,
-    location: args.location || locality,
-    price: price || "Price on request",
-    price_unit: "total_price",
+    summary_title: args.summary_title || name,
+    visibility: "internal",
     status: "draft",
     source: "agent",
-    description: args.description || undefined,
   };
-  if (typeof args.price_value === "number") payload.price_value = args.price_value;
-  if (args.price_unit) payload.price_unit = args.price_unit;
-  if (args.configuration) payload.configuration = args.configuration;
-  if (typeof args.carpet_area_sqft === "number") payload.carpet_area_sqft = args.carpet_area_sqft;
-  if (args.possession) payload.possession = args.possession;
-  if (typeof args.parking === "number") payload.parking = args.parking;
-  if (typeof args.rera_approved === "boolean") payload.rera_approved = args.rera_approved;
-  if (args.image_url) payload.image_url = args.image_url;
-  const extra: Record<string, unknown> = {};
-  if (args.furnishing) extra.furnishing = args.furnishing;
-  if (Object.keys(extra).length) payload.custom_fields = extra;
+  if (table.includes("_commercial_") && args.commercial_use_type) payload.commercial_use_type = String(args.commercial_use_type);
+  if (!table.includes("_commercial_") && typeof args.bhk === "number") payload.bhk = args.bhk;
+  if (args.configuration_type) payload.configuration_type = String(args.configuration_type);
+  if (typeof args.carpet_area_sqft === "number") {
+    payload.carpet_area_sqft = args.carpet_area_sqft;
+    payload.area_raw_text = `${args.carpet_area_sqft} sqft`;
+  }
+  if (transaction === "rent") {
+    if (typeof args.monthly_rent === "number") payload.monthly_rent = args.monthly_rent;
+  } else if (typeof args.total_asking_price === "number") {
+    payload.total_asking_price = args.total_asking_price;
+  }
+  if (args.price_raw_text) payload.price_raw_text = String(args.price_raw_text);
+  if (args.furnishing_status) payload.furnishing_status = String(args.furnishing_status);
+  if (args.possession_status) payload.possession_status = String(args.possession_status);
+  if (typeof args.car_parking_count === "number") payload.car_parking_count = args.car_parking_count;
+  if (args.description) payload.broker_notes = [{ note: String(args.description) }];
 
   try {
-    const created = await restPost("chariot_properties", payload);
-    return JSON.stringify({ ok: true, id: created?.id, name, locality, status: "draft" });
+    const created = await restPost(table, payload);
+    return JSON.stringify({ ok: true, id: created?.id, name, locality, status: "draft", table, kind: "internal" });
   } catch (error) {
     return JSON.stringify({ error: error instanceof Error ? error.message : "Could not create listing" });
+  }
+}
+
+async function updateListing(args: Record<string, unknown>): Promise<string> {
+  const id = Number(args.id);
+  const category = String(args.category || "residential");
+  const transaction = String(args.transaction || "sale");
+  const table = listingTable(category, transaction);
+  if (!Number.isFinite(id) || !table) return noRow("I need the listing id to update it.");
+  if (!(await rowExists(table, id))) return noRow(`I couldn't find listing ${id} to update.`);
+
+  const payload: Record<string, unknown> = {};
+  const copy = [
+    "building_name", "locality_raw", "micro_market", "summary_title", "configuration_type",
+    "price_raw_text", "furnishing_status", "possession_status",
+  ];
+  for (const key of copy) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) payload[key] = value.trim();
+  }
+  if (typeof args.locality === "string" && args.locality.trim()) {
+    payload.locality_raw = String(args.locality).trim();
+    payload.locality_resolved = String(args.locality).trim();
+  }
+  for (const key of ["bhk", "carpet_area_sqft", "car_parking_count"]) {
+    if (typeof args[key] === "number") payload[key] = args[key];
+  }
+  if (transaction === "rent") {
+    if (typeof args.monthly_rent === "number") payload.monthly_rent = args.monthly_rent;
+  } else if (typeof args.total_asking_price === "number") {
+    payload.total_asking_price = args.total_asking_price;
+  }
+  if (typeof args.carpet_area_sqft === "number") payload.area_raw_text = `${args.carpet_area_sqft} sqft`;
+  if (args.description && String(args.description).trim()) {
+    payload.broker_notes = [{ note: String(args.description).trim() }];
+  }
+
+  if (Object.keys(payload).length === 0) return noRow("Nothing to update — tell me what changed.");
+
+  try {
+    await restPatch(`id=eq.${id}`, table, payload);
+    return JSON.stringify({ ok: true, id, updated: Object.keys(payload) });
+  } catch (error) {
+    return JSON.stringify({ error: error instanceof Error ? error.message : "Could not update listing" });
+  }
+}
+
+async function deleteListing(args: Record<string, unknown>): Promise<string> {
+  const id = Number(args.id);
+  const table = listingTable(String(args.category || "residential"), String(args.transaction || "sale"));
+  if (!Number.isFinite(id) || !table) return noRow("I need the listing id to delete it.");
+  if (!(await rowExists(table, id))) return noRow(`I couldn't find listing ${id} to delete.`);
+
+  try {
+    await restDelete(`id=eq.${id}`, table);
+    return JSON.stringify({ ok: true, id, deleted: true });
+  } catch (error) {
+    return JSON.stringify({ error: error instanceof Error ? error.message : "Could not delete listing" });
+  }
+}
+
+async function rowExists(table: string, id: number): Promise<boolean> {
+  try {
+    const rows = await restSelect(`${table}?select=id&id=eq.${id}`);
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function restPatch(filter: string, table: string, body: Record<string, unknown>) {
+  const { supabaseUrl, serviceKey } = config();
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/rest/v1/${table}?${filter}`, {
+    method: "PATCH",
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || `Database update returned ${response.status}`);
+  }
+}
+
+async function restDelete(filter: string, table: string) {
+  const { supabaseUrl, serviceKey } = config();
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/rest/v1/${table}?${filter}`, {
+    method: "DELETE",
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, Prefer: "return=representation" },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || `Database delete returned ${response.status}`);
   }
 }
 
@@ -330,6 +489,10 @@ async function runTool(name: string, rawArgs: string): Promise<string> {
       return searchLeads(args as { locality?: string; limit?: number });
     case "create_listing":
       return createListing(args);
+    case "update_listing":
+      return updateListing(args);
+    case "delete_listing":
+      return deleteListing(args);
     default:
       return JSON.stringify({ error: `Unknown tool ${name}` });
   }
