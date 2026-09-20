@@ -11,7 +11,7 @@ const SUGGESTIONS = [
   "Which 2 BHKs do I have at the moment?",
   "Any office space for rent in BKC or Lower Parel?",
   "Who enquired about properties recently?",
-  "Has anyone asked for a 3 BHK near Bandra?",
+  "Store this for me: 2 BHK in Khar, 1100 sqft, ₹3.4 crore, semi-furnished, garden view",
 ];
 
 const OPENING: Message = {

@@ -8,6 +8,7 @@ export type AdminApi = {
   get: (path: string) => Promise<Response>;
   post: (path: string, body?: unknown) => Promise<Response>;
   patch: (path: string, body: unknown) => Promise<Response>;
+  delete: (path: string) => Promise<Response>;
 };
 
 export type AdminAuth = {
@@ -86,6 +87,7 @@ export function useAdminAuth(): AdminAuth {
       get: (path) => request(path),
       post: (path, body) => request(path, jsonInit("POST", body)),
       patch: (path, body) => request(path, jsonInit("PATCH", body)),
+      delete: (path) => request(path, jsonInit("DELETE")),
     }),
     [request],
   );

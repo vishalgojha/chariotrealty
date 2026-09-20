@@ -147,10 +147,12 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
 .field-chips{display:flex;gap:7px;flex-wrap:wrap}
 .field-chips span{background:#fff;border:1px solid var(--border);border-radius:20px;padding:5px 10px;font-size:11px;color:var(--ink)}
 .field-chips small{display:inline;color:var(--bronze);margin-left:5px;font-size:10px}
+.field-hint{margin-top:6px;color:var(--slate);font-size:11.5px}
+.file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 
 /* Row list */
 .row-list{display:flex;flex-direction:column}
-.row-item{display:flex;align-items:center;gap:14px;padding:13px 14px;border-top:1px solid var(--border);font-size:13.5px}
+.row-item{display:flex;align-items:center;gap:8px;padding:13px 14px;border-top:1px solid var(--border);font-size:13.5px;flex-wrap:wrap}
 .row-item:last-child{border-bottom:0}
 .row-item img{width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0}
 .row-main{flex:1;min-width:0}
@@ -261,6 +263,8 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
   .panel{padding:20px}
   .agent-form{grid-template-columns:1fr}
   .panel-head .input{width:100%}
+  .form-submit{flex-wrap:wrap}
+  .row-item{flex-wrap:wrap}
 }
 @media(max-width:460px){
   .metric-row{grid-template-columns:1fr}

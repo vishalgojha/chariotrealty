@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, ChangeEvent, useCallback, useEffect, useState } from "react";
 import { readJson } from "../lib/api";
+import { readStoredSession } from "../lib/session";
 import type { CmsField, CmsProperty, CmsFieldType } from "../lib/types";
 import { FIELD_TYPE_OPTIONS } from "../lib/types";
 import type { AdminApi } from "../hooks/use-admin-auth";
@@ -17,6 +18,7 @@ const WORKFLOW = [
 ] as const;
 
 const EMPTY_FORM = {
+  id: "",
   slug: "",
   name: "",
   category: "residential",
@@ -42,6 +44,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const loadAll = useCallback(async () => {
     const [inventoryResponse, fieldsResponse] = await Promise.all([api.get("/api/inventory?admin=1"), api.get("/api/inventory/fields")]);
@@ -79,21 +82,89 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     setBusy(true);
     setError("");
     try {
-      const response = await api.post("/api/inventory", {
+      const body = {
         ...form,
         custom_fields: customValues,
         carpet_area_sqft: form.carpet_area_sqft ? Number(form.carpet_area_sqft) : null,
-      });
+      };
+      const response = editing ? await api.patch(`/api/inventory/${form.id}`, body) : await api.post("/api/inventory", body);
       const payload = await readJson(response);
-      if (!response.ok) throw new Error(payload.error || "Could not create property");
-      setProperties((items) => [payload.data, ...items]);
+      if (!response.ok) throw new Error(payload.error || "Could not save property");
+      setProperties((items) =>
+        editing ? items.map((item) => (item.id === payload.data.id ? payload.data : item)) : [payload.data, ...items],
+      );
       setCustomValues({});
       setForm(EMPTY_FORM);
-      notify(form.status === "published" ? "Published to the website" : `Saved as ${form.status}`);
+      setEditing(false);
+      notify(editing ? "Draft updated" : form.status === "published" ? "Published to the website" : `Saved as ${form.status}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create property");
+      setError(e instanceof Error ? e.message : "Could not save property");
     } finally {
       setBusy(false);
+    }
+  }
+
+  function startEdit(property: CmsProperty) {
+    setEditing(true);
+    setCustomValues(property.custom_fields || {});
+    setError("");
+    setForm({
+      id: property.id,
+      slug: property.slug,
+      name: property.name,
+      category: property.category,
+      locality: property.locality,
+      micro_market: property.micro_market,
+      location: property.location,
+      price: property.price,
+      configuration: property.configuration || "",
+      carpet_area_sqft: property.carpet_area_sqft ? String(property.carpet_area_sqft) : "",
+      image_url: property.image_url || "",
+      status: property.status as "draft" | "approved" | "published",
+    });
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setCustomValues({});
+    setForm(EMPTY_FORM);
+    setError("");
+  }
+
+  async function removeProperty(id: string, name: string) {
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    const response = await api.delete(`/api/inventory/${id}`);
+    if (!response.ok) {
+      const payload = await readJson(response);
+      return setError(String(payload.error || "Could not delete property"));
+    }
+    setProperties((items) => items.filter((item) => item.id !== id));
+    if (editing && form.id === id) cancelEdit();
+    notify("Deleted");
+  }
+
+  async function uploadImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = new FormData();
+      data.append("file", file);
+      const response = await fetch(`/api/inventory/images`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${readStoredSession()?.access_token || ""}` },
+        body: data,
+      });
+      const payload = await readJson(response);
+      if (!response.ok) throw new Error(payload.error || "Could not upload image");
+      patch({ image_url: payload.public_url });
+      notify("Image uploaded");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not upload image");
+    } finally {
+      setBusy(false);
+      event.target.value = "";
     }
   }
 
@@ -118,7 +189,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
         <PanelHead
           eyebrow="Chariot CMS"
           title="Kapil’s inventory"
-          subtitle="Add a property, then move it through the workflow: Draft → Approve → Publish."
+          subtitle="Add or edit a property, then move it through the workflow: Draft → Approve → Publish. You can also dictate a property to the Assistant and it will save the draft here."
         />
         <div className="field-builder">
           <div>
@@ -227,8 +298,15 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
             <input className="input" placeholder="e.g. Kalanagar, Bandra East" value={form.location} onChange={(e) => patch({ location: e.target.value })} required />
           </label>
           <label className="field">
-            <span>Image URL</span>
-            <input className="input" type="url" placeholder="https://…" value={form.image_url} onChange={(e) => patch({ image_url: e.target.value })} />
+            <span>Image</span>
+            <input className="input" type="url" placeholder="Paste an image URL, or upload below" value={form.image_url} onChange={(e) => patch({ image_url: e.target.value })} />
+            <small className="field-hint">
+              <label className="btn btn-light btn-sm" role="button">
+                Upload image
+                <input type="file" accept="image/*" className="file-input" onChange={uploadImage} disabled={busy} />
+              </label>
+              {busy && <em> Uploading…</em>}
+            </small>
           </label>
           {fields.map((field) => (
             <label className="field" key={field.id}>
@@ -263,19 +341,23 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
             </label>
           ))}
           <div className="form-submit">
+            {editing && (
+              <button type="button" className="btn btn-light" onClick={cancelEdit}>Cancel edit</button>
+            )}
             <button type="submit" className="btn btn-dark" disabled={busy}>
-              {busy ? "Saving…" : form.status === "published" ? "Save & publish" : form.status === "approved" ? "Save & approve" : "Save draft"}
+              {busy ? "Saving…" : editing ? "Save changes" : form.status === "published" ? "Save & publish" : form.status === "approved" ? "Save & approve" : "Save draft"}
             </button>
           </div>
         </form>
 
+        {editing && <Note tone="success">Editing this draft. Changes are saved on “Save changes” — the website only changes when it is published.</Note>}
         {error && <Note tone="error">{error}</Note>}
       </Panel>
 
       <Panel>
         <PanelHead eyebrow="Inventory list" title="Drafts & published" />
         {loaded && !properties.length ? (
-          <p className="empty-state">No inventory yet. Create a draft above, then approve and publish it — it will replace the static fallback on the website.</p>
+          <p className="empty-state">No inventory yet. Create a draft above — or just ask the Assistant to save one — then approve and publish it: that is what shows on the website.</p>
         ) : (
           <div className="row-list">
             {properties.map((property) => (
@@ -286,8 +368,10 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
                   <small>{property.location}{property.price ? ` · ${property.price}` : ""}</small>
                 </div>
                 <Pill tone={property.status === "published" ? "live" : "draft"}>{property.status}</Pill>
+                <button type="button" className="btn btn-light btn-sm" onClick={() => startEdit(property)}>Edit</button>
+                <button type="button" className="btn btn-light btn-sm" onClick={() => removeProperty(property.id, property.name)}>Delete</button>
                 {property.status !== "published" ? (
-                  <button type="button" className="btn btn-light btn-sm" onClick={() => setStatus(property.id, "published")}>Publish to website</button>
+                  <button type="button" className="btn btn-light btn-sm" onClick={() => setStatus(property.id, "published")}>Publish</button>
                 ) : (
                   <button type="button" className="btn btn-light btn-sm" onClick={() => setStatus(property.id, "draft")}>Unpublish</button>
                 )}

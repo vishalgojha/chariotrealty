@@ -13,7 +13,7 @@ HOW TO ANSWER
 - Never invent data. If the tools return nothing, say "I don't have that yet" and offer the closest real match or ask him for the details to save.
 
 ACTION CONFIRMATION
-Creating a draft, saving a lead, storing a requirement is private to Chariot — go ahead and confirm it in one line.
+When Kapil dictates a new property, save it as a draft with create_listing — that is private to Chariot, go ahead and confirm it in one line ("Saved as a draft: 2 BHK, Bandra West, ₹3.2 crore. You'll find it in Inventory under Draft — say the word when you want to publish it."). Never create it as published.
 Publishing something to the Chariot Realty website requires Kapil's explicit confirmation. The only allowed publish-confirmation phrase is exactly: PUBLISH TO CHARIOT. Anything else means draft or private save. Never claim something is live on the Chariot website unless the publish actually completed.`;
 
 type SarvamToolCall = {
@@ -122,6 +122,36 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_listing",
+      description:
+        "Create a new property draft in Kapil's inventory when he dictates one (e.g. \"2 BHK in Bandra West, 1100 sqft, ₹3.2 crore, semi-furnished, sea view\"). The draft shows up in the Inventory tab and can be approved/published later. Only call this when the user is dictating a NEW property. Price is the display string; price_value is the number in the given unit if clear.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Property/building name, or a short title. Required." },
+          category: { type: "string", enum: ["residential", "commercial", "under-construction"], description: "Default residential." },
+          locality: { type: "string", description: "Locality e.g. Bandra West. Required." },
+          micro_market: { type: "string", description: "Micro-market e.g. Bandra West." },
+          location: { type: "string", description: "Detailed location e.g. Hill Road, Bandra West." },
+          price: { type: "string", description: "Display price text e.g. ₹3.2 crore or ₹85,000 / month." },
+          price_value: { type: "number", description: "Numeric value in the price_unit (e.g. 32000000 for total price, 85000 for monthly rent)." },
+          price_unit: { type: "string", enum: ["total_price", "monthly_rent", "sqft"], description: "What price_value represents." },
+          configuration: { type: "string", description: "e.g. 2 BHK, 3 BHK, Office." },
+          carpet_area_sqft: { type: "number", description: "Carpet area in sq ft." },
+          possession: { type: "string", description: "e.g. Ready to move, Dec 2026." },
+          parking: { type: "number", description: "Car parking count." },
+          rera_approved: { type: "boolean", description: "RERA approved yes/no." },
+          image_url: { type: "string", description: "Image URL if the user provided or pasted one." },
+          description: { type: "string", description: "1-2 sentence description." },
+          furnishing: { type: "string", description: "e.g. Semi-Furnished, Furnished, Unfurnished." },
+        },
+        required: ["name", "locality"],
+      },
+    },
+  },
 ];
 
 function config() {
@@ -147,6 +177,22 @@ async function restSelect(path: string) {
   if (!response.ok) throw new Error(`Database search returned ${response.status}`);
   const rows = await response.json() as Array<Record<string, unknown>>;
   return rows;
+}
+
+async function restPost(path: string, body: Record<string, unknown>) {
+  const { supabaseUrl, serviceKey } = config();
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/rest/v1/${path}`, {
+    method: "POST",
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || `Database write returned ${response.status}`);
+  }
+  const rows = await response.json() as Array<Record<string, unknown>>;
+  return rows[0] ?? null;
 }
 
 function pick(row: Record<string, unknown>, table: string) {
@@ -223,6 +269,56 @@ async function searchLeads(args: { locality?: string; limit?: number }): Promise
   return JSON.stringify({ results });
 }
 
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 60);
+}
+
+async function createListing(args: Record<string, unknown>): Promise<string> {
+  const name = String(args.name || "").trim();
+  const locality = String(args.locality || "").trim();
+  if (!name || !locality) return JSON.stringify({ error: "Listing needs at least a name and a locality." });
+
+  const price = String(args.price ?? "").trim() || `${args.price_value ?? ""}`.trim();
+  const payload: Record<string, unknown> = {
+    slug: slugify(name),
+    name,
+    category: args.category || "residential",
+    locality,
+    micro_market: args.micro_market || locality,
+    location: args.location || locality,
+    price: price || "Price on request",
+    price_unit: "total_price",
+    status: "draft",
+    source: "agent",
+    description: args.description || undefined,
+  };
+  if (typeof args.price_value === "number") payload.price_value = args.price_value;
+  if (args.price_unit) payload.price_unit = args.price_unit;
+  if (args.configuration) payload.configuration = args.configuration;
+  if (typeof args.carpet_area_sqft === "number") payload.carpet_area_sqft = args.carpet_area_sqft;
+  if (args.possession) payload.possession = args.possession;
+  if (typeof args.parking === "number") payload.parking = args.parking;
+  if (typeof args.rera_approved === "boolean") payload.rera_approved = args.rera_approved;
+  if (args.image_url) payload.image_url = args.image_url;
+  const extra: Record<string, unknown> = {};
+  if (args.furnishing) extra.furnishing = args.furnishing;
+  if (Object.keys(extra).length) payload.custom_fields = extra;
+
+  try {
+    const created = await restPost("chariot_properties", payload);
+    return JSON.stringify({ ok: true, id: created?.id, name, locality, status: "draft" });
+  } catch (error) {
+    return JSON.stringify({ error: error instanceof Error ? error.message : "Could not create listing" });
+  }
+}
+
 async function runTool(name: string, rawArgs: string): Promise<string> {
   const args = JSON.parse(rawArgs) as Record<string, unknown>;
   switch (name) {
@@ -232,6 +328,8 @@ async function runTool(name: string, rawArgs: string): Promise<string> {
       return searchRequirements(args as SearchArgs);
     case "search_leads":
       return searchLeads(args as { locality?: string; limit?: number });
+    case "create_listing":
+      return createListing(args);
     default:
       return JSON.stringify({ error: `Unknown tool ${name}` });
   }
