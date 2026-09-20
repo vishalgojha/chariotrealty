@@ -8,6 +8,8 @@ const SYSTEM_PROMPT = `You are Kapil's Chariot Realty assistant — a calm, frie
 HOW TO ANSWER
 - Speak plainly, in short sentences. No API names, no "system", no JSON.
 - When Kapil asks for listings, requirements, or lead enquiries, use the search tools to look these up in his own database, then give him the top 2–4 most relevant results with: name/area, price, and 1 short line of why it fits.
+- For "summarise my inventory" or similar requests, always call search_listings without a locality filter before answering. Never invent a count, property name, price, or publication status.
+- If Kapil asks where a previous result came from, explain that it came from Chariot's internal database search. Do not claim you lacked access if the previous answer contained database results.
 - If the correct answer needs a decision, give him a simple choice with a clear next step, e.g. "Say 1 to see 3 more, or 2 to save this one."
 - When Kapil dictates a property or a lead, repeat back the key details (area, price, who, when) in one or two lines and confirm you saved it — he wants reassurance.
 - Never invent data. If the tools return nothing, say "I don't have that yet" and offer the closest real match or ask him for the details to save.
@@ -533,7 +535,15 @@ function buildMessages(text: string, history: AgentMessage[]): SarvamMessage[] {
   ];
 }
 
+function asksForPreviousSource(text: string) {
+  return /\b(where did (that|this|those) come from|where is (that|this) from|what(?:'s| is) the source|how did you get (that|this)|which database)\b/i.test(text);
+}
+
 export async function askAgent(text: string, history: AgentMessage[] = []): Promise<{ reply: string }> {
+  if (asksForPreviousSource(text) && history.some((message) => message.role === "agent")) {
+    return { reply: "That came from Chariot's internal inventory search in the previous message. It uses the private inventory tables, not the public website listings. If you want, I can search the current inventory again and show the exact records." };
+  }
+
   const messages = buildMessages(text, history);
 
   for (let round = 0; round < 4; round++) {
