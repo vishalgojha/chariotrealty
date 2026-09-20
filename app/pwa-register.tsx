@@ -4,7 +4,9 @@ import { useEffect } from "react";
 
 export default function PwaRegister() {
   useEffect(() => {
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => undefined);
+    }
   }, []);
   return null;
 }
