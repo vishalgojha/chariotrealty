@@ -8,18 +8,18 @@ import { Note, Panel, PanelHead } from "./ui";
 type Message = { role: "user" | "agent"; text: string };
 
 const SUGGESTIONS = [
-  "What does PropAI know about my recent WhatsApp groups?",
-  "Summarise last week’s property conversations",
-  "Which contacts mentioned renting or buying?",
-  "Find anything related to Bandra West in my chats",
+  "What good 2 BHKs are available around Bandra?",
+  "Summarise my current inventory",
+  "Who enquired about properties recently?",
+  "Store this for me: 2 BHK in Khar, 1100 sqft, ₹3.4 crore",
 ];
 
 const OPENING: Message = {
   role: "agent",
-  text: "Hi Kapil 👋 This desk talks directly to PropAI. Ask it anything about your WhatsApp groups and extracted property data — it has its own memory and intelligence, separate from your Chariot assistant.",
+  text: "Hi Kapil 👋 Ask me anything. I'm your Chariot assistant — I can find listings, match buyers' requirements, check who enquired on the website, and save things to your inventory for later.",
 };
 
-export function PropaiTab({ api }: { api: AdminApi }) {
+export function AskTab({ api }: { api: AdminApi }) {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<Message[]>([OPENING]);
   const [busy, setBusy] = useState(false);
@@ -39,15 +39,16 @@ export function PropaiTab({ api }: { api: AdminApi }) {
     setMessages(nextMessages);
     setBusy(true);
     try {
-      const response = await api.post("/api/propai/chat", { text });
+      const history = nextMessages.slice(0, -1);
+      const response = await api.post("/api/agent/chat", { text, history });
       const payload = await readJson(response);
-      if (!response.ok) throw new Error(payload.error || "PropAI could not answer");
-      const reply = String(payload.reply || "PropAI returned no answer.");
+      if (!response.ok) throw new Error(payload.error || "The assistant could not answer");
+      const reply = String(payload.reply || "The assistant returned no answer.");
       setMessages((items) => [...items, { role: "agent", text: reply }]);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "PropAI could not answer";
-      const friendly = message.toLowerCase().includes("not configured")
-        ? "PropAI access isn't set up yet — let an admin know the PropAI token needs to be added."
+      const message = e instanceof Error ? e.message : "The assistant could not answer";
+      const friendly = message.toLowerCase().includes("api key is not configured") || message.toLowerCase().includes("invalid_api_key") || message.toLowerCase().includes("unauthorized")
+        ? "The assistant isn't connected to the AI provider yet. Let an admin know the AI key needs to be added."
         : message;
       setMessages((items) => [...items, { role: "agent", text: `I hit a snag: ${friendly}. Try asking again in a moment.` }]);
     } finally {
@@ -64,20 +65,20 @@ export function PropaiTab({ api }: { api: AdminApi }) {
     <div className="tab-stack">
       <Panel className="agent-chat-card">
         <PanelHead
-          eyebrow="PropAI intelligence"
-          title="Ask PropAI"
-          subtitle="A direct line to PropAI — your WhatsApp groups, extractions and PropAI memory. This is separate from the Chariot assistant."
+          eyebrow="Kapil’s private assistant"
+          title="Ask anything"
+          subtitle="One plain-language helper for everything: search your listings, match requirements, check website leads, or save a new listing. It never publishes to your website without your confirmation."
         />
         <div className="agent-thread" ref={threadRef} aria-live="polite">
           {messages.map((message, index) => (
             <div key={index} className={`agent-msg ${message.role}`}>
-              <span className="agent-msg-label">{message.role === "user" ? "You" : "PropAI"}</span>
+              <span className="agent-msg-label">{message.role === "user" ? "You" : "Assistant"}</span>
               <p>{message.text}</p>
             </div>
           ))}
           {busy && (
             <div className="agent-msg agent">
-              <span className="agent-msg-label">PropAI</span>
+              <span className="agent-msg-label">Assistant</span>
               <p>Thinking…</p>
             </div>
           )}
@@ -101,7 +102,7 @@ export function PropaiTab({ api }: { api: AdminApi }) {
         <form className="agent-composer" onSubmit={onSubmit}>
           <textarea
             className="textarea"
-            placeholder="Ask PropAI anything…"
+            placeholder="Ask anything…"
             rows={2}
             disabled={busy}
             value={prompt}

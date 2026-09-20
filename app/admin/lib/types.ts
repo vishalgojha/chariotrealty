@@ -82,4 +82,4 @@ export const FIELD_TYPE_LABELS: Record<CmsFieldType, string> = {
 
 export const FIELD_TYPE_OPTIONS = Object.entries(FIELD_TYPE_LABELS).map(([value, label]) => ({ value: value as CmsFieldType, label }));
 
-export type TabId = "overview" | "whatsapp" | "inventory" | "leads" | "agent" | "propai" | "markets";
+export type TabId = "overview" | "whatsapp" | "inventory" | "leads" | "agent" | "markets";

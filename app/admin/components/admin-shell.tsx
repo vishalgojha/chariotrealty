@@ -3,12 +3,11 @@
 import { useCallback, useState } from "react";
 import type { AdminAuth } from "../hooks/use-admin-auth";
 import type { TabId } from "../lib/types";
-import { AgentTab } from "./agent-tab";
+import { AskTab } from "./ask-tab";
 import { InventoryTab } from "./inventory-tab";
 import { LeadsTab } from "./leads-tab";
 import { MarketsTab } from "./markets-tab";
 import { OverviewTab } from "./overview-tab";
-import { PropaiTab } from "./propai-tab";
 import { WhatsappTab, type Notify } from "./whatsapp-tab";
 import { Icon, Toast, type ToastTone } from "./ui";
 
@@ -17,8 +16,7 @@ const NAV: { id: TabId; label: string; hint: string; icon: string }[] = [
   { id: "whatsapp", label: "WhatsApp studio", hint: "Self-chat publishing", icon: "whatsapp" },
   { id: "inventory", label: "My inventory", hint: "Kapil’s list & CMS", icon: "box" },
   { id: "leads", label: "Enquiries", hint: "Website leads", icon: "mail" },
-  { id: "agent", label: "Assistant", hint: "Search listings, leads & requirements", icon: "spark" },
-  { id: "propai", label: "Ask PropAI", hint: "Ask PropAI anything", icon: "spark" },
+  { id: "agent", label: "Ask anything", hint: "Listings, requirements, leads & notes", icon: "spark" },
   { id: "markets", label: "Markets", hint: "Neighbourhoods", icon: "pin" },
 ];
 
@@ -109,8 +107,7 @@ export function AdminShell({ auth }: { auth: AdminAuth }) {
             {tab === "whatsapp" && <WhatsappTab api={auth.api} notify={notify} />}
             {tab === "inventory" && <InventoryTab api={auth.api} notify={notify} />}
             {tab === "leads" && <LeadsTab api={auth.api} />}
-            {tab === "agent" && <AgentTab api={auth.api} />}
-            {tab === "propai" && <PropaiTab api={auth.api} />}
+            {tab === "agent" && <AskTab api={auth.api} />}
             {tab === "markets" && <MarketsTab />}
           </div>
           <footer className="admin-footer">
