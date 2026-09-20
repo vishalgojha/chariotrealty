@@ -4,6 +4,30 @@ import { useEffect, useState } from "react";
 
 type Category = "residential" | "commercial" | "under-construction";
 
+type ApiProperty = {
+  id: string;
+  slug: string;
+  name: string;
+  category: Category;
+  locality: string;
+  microMarket: string;
+  city: string;
+  zone: string;
+  location: string;
+  price: string;
+  priceValue: number;
+  priceUnit: "monthly_rent" | "per_sqft" | "total_price";
+  currency: string;
+  carpetAreaSqft: number;
+  configuration?: string;
+  parking?: number;
+  possession?: string;
+  reraApproved?: boolean;
+  image?: string;
+  description?: string;
+  source?: string;
+};
+
 type Property = {
   category: Category;
   name: string;
@@ -21,7 +45,7 @@ type Property = {
 
 const whatsapp = "https://wa.me/919773757759";
 
-const properties: Property[] = [
+const fallback: Property[] = [
   {
     category: "residential",
     name: "Ten BKC",
@@ -33,8 +57,8 @@ const properties: Property[] = [
     locale: "BKC / Kalanagar",
     specs: [["Config", "3 BHK"], ["Carpet", "1,100 sqft"], ["Parking", "2 Covered"]],
     links: [
-      { label: "Watch Reel", href: "https://www.instagram.com/reel/PLACEHOLDER_TEN_BKC/", icon: "instagram" },
-      { label: "Drive Photos", href: "https://drive.google.com/PLACEHOLDER_TEN_BKC_ALBUM", icon: "folder" },
+      { label: "Watch Reel", icon: "instagram" },
+      { label: "Drive Photos", icon: "folder" },
     ],
     cta: "Contact Kapil on WhatsApp",
     message: "Hi Kapil, I'm interested in Ten BKC.",
@@ -48,7 +72,7 @@ const properties: Property[] = [
     tag: "Grade-A Office",
     locale: "",
     specs: [["Carpet", "4,200 sqft"], ["Condition", "Warm Shell"], ["Parking", "6 Reserved"]],
-    links: [{ label: "Layout Plan PDF", href: "https://drive.google.com/PLACEHOLDER_GODREJ_LAYOUT", icon: "folder" }],
+    links: [{ label: "Layout Plan PDF", icon: "folder" }],
     cta: "Contact Kapil on WhatsApp",
     message: "Hi Kapil, send term sheet for Godrej BKC.",
   },
@@ -62,13 +86,57 @@ const properties: Property[] = [
     image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80",
     specs: [["Typology", "2 & 3 BHK"], ["Carpet", "685 - 1,020"], ["Payment", "CLP Scheme"]],
     links: [
-      { label: "Brochure", href: "https://drive.google.com/PLACEHOLDER_CLEON_BROCHURE", icon: "folder" },
-      { label: "Site Reel", href: "https://www.instagram.com/reel/PLACEHOLDER_CLEON_SITE/", icon: "instagram" },
+      { label: "Brochure", icon: "folder" },
+      { label: "Site Reel", icon: "instagram" },
     ],
     cta: "Contact Kapil on WhatsApp",
     message: "Hi Kapil, send cost sheet for Rustomjee Cleon.",
   },
 ];
+
+const CATEGORY: Record<Category, string> = {
+  residential: "Residential",
+  commercial: "Commercial",
+  "under-construction": "Under Construction",
+};
+
+function priceParts(property: ApiProperty): { price: string; note?: string } {
+  if (property.priceUnit === "monthly_rent") {
+    const numeric = property.priceValue ? `₹${property.priceValue.toLocaleString("en-IN")}/mo` : property.price;
+    return { price: numeric.replace(/\/mo\/mo/, "/mo"), note: "/ mo" };
+  }
+  if (property.priceUnit === "per_sqft") {
+    return { price: `₹${property.priceValue.toLocaleString("en-IN")}`, note: "/ sqft" };
+  }
+  return { price: property.price || `From ₹${(property.priceValue ?? 0).toLocaleString("en-IN")}` };
+}
+
+function fromApi(row: ApiProperty): Property {
+  const price = priceParts(row);
+  const specs: [string, string][] = [
+    ["Config", row.configuration || CATEGORY[row.category]],
+    ["Carpet", row.carpetAreaSqft ? `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft` : "On request"],
+  ];
+  if (row.parking) specs.push(["Parking", `${row.parking} Reserved`]);
+  if (row.possession) specs.push(["Possession", row.possession]);
+
+  const tag = row.category === "under-construction" ? (row.possession ? `Possession ${row.possession}` : "New Launch") : row.category === "commercial" ? "Grade-A Office" : "Verified";
+  const locale = [row.microMarket, row.zone].filter(Boolean).join(" / ");
+  return {
+    category: row.category,
+    name: row.name,
+    location: row.location || [row.locality, row.zone].filter(Boolean).join(" · "),
+    price: price.price,
+    priceNote: price.note,
+    image: row.image,
+    tag,
+    locale,
+    specs,
+    links: [],
+    cta: "Contact Kapil on WhatsApp",
+    message: `Hi Kapil, I'm interested in ${row.name}.`,
+  };
+}
 
 function InstagramIcon({ size = 14 }: { size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" /></svg>;
@@ -107,13 +175,19 @@ function PropertyCard({ property }: { property: Property }) {
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState<"all" | Category>("all");
   const [liveStats, setLiveStats] = useState({ listings: 0, hubs: 0 });
-  const visibleProperties = activeCategory === "all" ? properties : properties.filter((property) => property.category === activeCategory);
+  const [cards, setCards] = useState<Property[]>(fallback);
 
   useEffect(() => {
     Promise.all([fetch("/api/properties").then((response) => response.json()), fetch("/api/markets").then((response) => response.json())])
-      .then(([propertyData, marketData]) => setLiveStats({ listings: propertyData.count ?? propertyData.data?.length ?? 0, hubs: marketData.data?.length ?? 0 }))
-      .catch(() => setLiveStats({ listings: properties.length, hubs: 0 }));
+      .then(([propertyData, marketData]) => {
+        const data = propertyData.data as ApiProperty[] | undefined;
+        setCards(Array.isArray(data) ? data.map(fromApi) : fallback);
+        setLiveStats({ listings: propertyData.count ?? data?.length ?? 0, hubs: marketData.data?.length ?? 0 });
+      })
+      .catch(() => setLiveStats({ listings: fallback.length, hubs: 0 }));
   }, []);
+
+  const visibleProperties = activeCategory === "all" ? cards : cards.filter((property) => property.category === activeCategory);
 
   return (
     <>
@@ -140,7 +214,11 @@ export default function Home() {
           <div className="filter-strip" role="tablist" aria-label="Property categories">
             {(["all", "residential", "commercial", "under-construction"] as const).map((category) => <button key={category} type="button" role="tab" aria-selected={activeCategory === category} className={`filter-btn ${activeCategory === category ? "active" : ""}`} onClick={() => setActiveCategory(category)}>{category === "under-construction" ? "Under Construction" : category[0].toUpperCase() + category.slice(1)}</button>)}
           </div>
-          <div className="grid">{visibleProperties.map((property) => <PropertyCard key={property.name} property={property} />)}</div>
+          {visibleProperties.length ? (
+            <div className="grid">{visibleProperties.map((property) => <PropertyCard key={property.name} property={property} />)}</div>
+          ) : (
+            <p className="empty-state section">No {activeCategory === "all" ? "" : `${CATEGORY[activeCategory].toLowerCase()} `}listings right now — check back soon.</p>
+          )}
           <div className="insta-strip"><div className="insta-left"><div className="insta-icon-box"><InstagramIcon size={22} /></div><div><h4>Watch Our Weekly Site Walkthroughs</h4><p>Raw uncut tours, lobby reviews, and off-market updates directly from Bandra &amp; BKC.</p></div></div><a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer" className="insta-btn">Follow @chariotrealty.in →</a></div>
         </section>
       </main>
