@@ -540,11 +540,21 @@ function asksForPreviousSource(text: string) {
 }
 
 export async function askAgent(text: string, history: AgentMessage[] = []): Promise<{ reply: string }> {
-  if (asksForPreviousSource(text) && history.some((message) => message.role === "agent")) {
-    return { reply: "That came from Chariot's internal inventory search in the previous message. It uses the private inventory tables, not the public website listings. If you want, I can search the current inventory again and show the exact records." };
-  }
-
   const messages = buildMessages(text, history);
+  if (asksForPreviousSource(text) && history.some((message) => message.role === "agent")) {
+    try {
+      const currentInventory = await searchListings({ limit: 10 });
+      messages.push({
+        role: "system",
+        content: `Source verification requested. Re-check Chariot's current private inventory before answering. The live search returned: ${currentInventory}. Explain the source accurately and do not rely only on the previous assistant wording.`,
+      });
+    } catch {
+      messages.push({
+        role: "system",
+        content: "Source verification requested. Explain that the previous answer should be verified against the current private inventory, and do not invent a source or deny access without checking.",
+      });
+    }
+  }
 
   for (let round = 0; round < 4; round++) {
     const completion = await callSarvam(messages);
