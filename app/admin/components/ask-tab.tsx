@@ -121,7 +121,7 @@ export function AskTab({ api }: { api: AdminApi }) {
           title="Ask anything"
           subtitle="One plain-language helper for everything: search your listings, match requirements, check website leads, or save a new listing. It never publishes to your website without your confirmation."
         />
-        <div className="agent-thread" ref={threadRef} aria-live="polite">
+        <div className={`agent-thread${messages.length <= 1 ? " agent-empty" : ""}`} ref={threadRef} aria-live="polite">
           {messages.map((message, index) => (
             <div key={index} className={`agent-msg ${message.role}`}>
               <span className="agent-msg-label">{message.role === "user" ? "You" : "Assistant"}</span>
@@ -166,8 +166,8 @@ export function AskTab({ api }: { api: AdminApi }) {
               }
             }}
           />
-          <button type="submit" className="btn btn-dark" disabled={busy || !prompt.trim()}>
-            {busy ? "Thinking…" : "Send"}
+          <button type="submit" className="agent-send" disabled={busy || !prompt.trim()} aria-label={busy ? "Thinking" : "Send message"}>
+            {busy ? "…" : "↑"}
           </button>
         </form>
       </Panel>
