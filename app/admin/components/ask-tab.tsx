@@ -19,6 +19,8 @@ const OPENING: Message = {
   text: "Hi Kapil 👋 Ask me anything. I'm your Chariot assistant — I can find listings, match buyers' requirements, check who enquired on the website, and save things to your inventory for later.",
 };
 
+const HISTORY_KEY = "chariot-realty-agent-history-v1";
+
 function renderInline(text: string): ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).filter(Boolean).map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
@@ -76,7 +78,33 @@ export function AskTab({ api }: { api: AdminApi }) {
   const [messages, setMessages] = useState<Message[]>([OPENING]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(HISTORY_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as unknown;
+        if (Array.isArray(parsed) && parsed.every((item) => item && typeof item === "object" && "role" in item && "text" in item)) {
+          const restored = parsed.filter((item) => {
+            const message = item as { role?: unknown; text?: unknown };
+            return (message.role === "user" || message.role === "agent") && typeof message.text === "string";
+          }) as Message[];
+          if (restored.length > 0) setMessages(restored.slice(-40));
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(HISTORY_KEY);
+    } finally {
+      setHistoryLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!historyLoaded) return;
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-40)));
+  }, [historyLoaded, messages]);
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
@@ -143,7 +171,7 @@ export function AskTab({ api }: { api: AdminApi }) {
                   </button>
                 ))
               ) : (
-                <button type="button" className="chip" onClick={() => setMessages([OPENING])}>
+                   <button type="button" className="chip" onClick={() => setMessages([OPENING])}>
                   Start a new conversation
                 </button>
               )}

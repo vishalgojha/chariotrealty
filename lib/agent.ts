@@ -9,6 +9,7 @@ HOW TO ANSWER
 - Speak plainly, in short sentences. No API names, no "system", no JSON.
 - When Kapil asks for listings, requirements, or lead enquiries, use the search tools to look these up in his own database, then give him the top 2–4 most relevant results with: name/area, price, and 1 short line of why it fits.
 - For "summarise my inventory" or similar requests, always call search_listings without a locality filter before answering. Never invent a count, property name, price, or publication status.
+- Never answer a factual listings, requirements, inventory, or enquiry question from memory. If the required search tool returns no rows, say that no matching records were found.
 - If Kapil asks where a previous result came from, explain that it came from Chariot's internal database search. Do not claim you lacked access if the previous answer contained database results.
 - If the correct answer needs a decision, give him a simple choice with a clear next step, e.g. "Say 1 to see 3 more, or 2 to save this one."
 - When Kapil dictates a property or a lead, repeat back the key details (area, price, who, when) in one or two lines and confirm you saved it — he wants reassurance.
@@ -500,7 +501,7 @@ async function runTool(name: string, rawArgs: string): Promise<string> {
   }
 }
 
-async function callSarvam(messages: SarvamMessage[]): Promise<SarvamResponse> {
+async function callSarvam(messages: SarvamMessage[], toolChoice?: string): Promise<SarvamResponse> {
   const { apiKey } = config();
   if (!apiKey) throw new Error("Sarvam API key is not configured");
 
@@ -511,7 +512,13 @@ async function callSarvam(messages: SarvamMessage[]): Promise<SarvamResponse> {
       "api-subscription-key": apiKey,
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model: SARVAM_MODEL, messages, tools: TOOLS, temperature: 0.4 }),
+    body: JSON.stringify({
+      model: SARVAM_MODEL,
+      messages,
+      tools: TOOLS,
+      ...(toolChoice ? { tool_choice: { type: "function", function: { name: toolChoice } } } : {}),
+      temperature: 0.4,
+    }),
     cache: "no-store",
   });
   const body = await response.json() as SarvamResponse;
@@ -539,8 +546,17 @@ function asksForPreviousSource(text: string) {
   return /\b(where did (that|this|those) come from|where is (that|this) from|what(?:'s| is) the source|how did you get (that|this)|which database)\b/i.test(text);
 }
 
+function forcedToolFor(text: string): string | undefined {
+  if (/\b(enquir|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
+  if (/\b(requirement|looking for|buyer|tenant|client wants|seeking)\b/i.test(text)) return "search_requirements";
+  if (/\b(save|store|add|new property|new listing)\b/i.test(text)) return "create_listing";
+  if (/\b(inventory|listing|property|properties|available|bhk|flat|apartment|office|villa|summari[sz]e)\b/i.test(text)) return "search_listings";
+  return undefined;
+}
+
 export async function askAgent(text: string, history: AgentMessage[] = []): Promise<{ reply: string }> {
   const messages = buildMessages(text, history);
+  const forcedTool = forcedToolFor(text);
   if (asksForPreviousSource(text) && history.some((message) => message.role === "agent")) {
     try {
       const currentInventory = await searchListings({ limit: 10 });
@@ -557,7 +573,7 @@ export async function askAgent(text: string, history: AgentMessage[] = []): Prom
   }
 
   for (let round = 0; round < 4; round++) {
-    const completion = await callSarvam(messages);
+    const completion = await callSarvam(messages, round === 0 ? forcedTool : undefined);
     const choice = completion.choices?.[0];
     if (!choice) {
       const detail = completion.error?.message || "No answer from the assistant";
