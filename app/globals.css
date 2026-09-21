@@ -172,6 +172,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
 .pairing-box{background:var(--bg-subtle);border:1px solid var(--border);border-radius:10px;padding:15px;margin-bottom:16px}
 .pairing-note{font-size:12px;color:var(--bronze);margin:0 0 12px;line-height:1.5}
 .pairing-code{display:block;letter-spacing:.18em;font-size:24px;color:var(--ink)}
+.pairing-qr{display:block;width:260px;height:260px;max-width:100%;padding:8px;background:#fff;border-radius:8px;border:1px solid var(--border-dark)}
 .pairing-box code{display:block;color:var(--ink);font-size:11px;line-height:1.45;word-break:break-all;white-space:pre-wrap}
 
 /* Agent */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { readJson } from "../lib/api";
 import type { WhatsappStatus } from "../lib/types";
 import type { AdminApi } from "../hooks/use-admin-auth";
@@ -14,6 +15,7 @@ export function WhatsappTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<null | { kind: "reset" | "remove" }>(null);
   const [waiting, setWaiting] = useState(false);
+  const [qrImage, setQrImage] = useState("");
 
   const loadStatus = useCallback(async () => {
     setError("");
@@ -31,6 +33,18 @@ export function WhatsappTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
+
+  useEffect(() => {
+    let active = true;
+    if (!status?.qr) {
+      setQrImage("");
+      return () => { active = false; };
+    }
+    QRCode.toDataURL(status.qr, { width: 260, margin: 2, errorCorrectionLevel: "M" })
+      .then((image) => { if (active) setQrImage(image); })
+      .catch(() => { if (active) setQrImage(""); });
+    return () => { active = false; };
+  }, [status?.qr]);
 
   const fail = (message: string) => {
     setError(message);
@@ -171,7 +185,7 @@ export function WhatsappTab({ api, notify }: { api: AdminApi; notify: Notify }) 
         <div className="wa-grid">
           <div>
             <span>Engine</span>
-            <strong>WhatsMeow · PropAI gateway</strong>
+            <strong>WhatsMeow · Chariot gateway</strong>
           </div>
           <div>
             <span>Phone</span>
@@ -205,12 +219,12 @@ export function WhatsappTab({ api, notify }: { api: AdminApi; notify: Notify }) 
             <strong className="pairing-code">{status.pairing_code}</strong>
           </div>
         )}
-        {status?.qr && (
-          <div className="pairing-box">
-            <p className="pairing-note">WhatsApp is waiting for pairing. Scan this QR from the PropAI WhatsMeow gateway.</p>
-            <code>{status.qr}</code>
-          </div>
-        )}
+          {status?.qr && (
+            <div className="pairing-box">
+            <p className="pairing-note">WhatsApp is waiting for pairing. On the phone ending in 7759, open WhatsApp → Linked devices → Link a device and scan this code.</p>
+            {qrImage ? <img className="pairing-qr" src={qrImage} alt="WhatsApp pairing QR code" /> : <code>{status.qr}</code>}
+            </div>
+          )}
         {error && <Note tone="error">{error}</Note>}
         <EmptyPanel title="Publishing is controlled from your WhatsApp self-chat.">
           Send the property text and photos there, review the draft, then reply “post it” to publish it on Chariot Realty.
