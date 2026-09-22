@@ -71,6 +71,15 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
 .quick-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:var(--bg-subtle);color:var(--ink);font-size:16px;flex-shrink:0}
 .quick-action strong{display:block;font-size:13.5px}
 .quick-action small{display:block;color:var(--slate);font-size:11.5px;margin-top:2px}
+.briefing-panel{border-left:3px solid var(--bronze)}
+.briefing-counts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.briefing-counts button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:9px;padding:13px;text-align:left;cursor:pointer;color:var(--ink)}
+.briefing-counts button:hover{border-color:var(--bronze)}
+.briefing-counts strong{font-family:'Fraunces',Georgia,serif;font-size:25px}
+.briefing-counts span{color:var(--slate);font-size:11px}
+.briefing-columns{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;border-top:1px solid var(--border);padding-top:16px}
+.briefing-columns h3{font-family:'Fraunces',Georgia,serif;font-size:16px;margin:0 0 9px}
+.briefing-columns p{font-size:12px;margin:7px 0;color:var(--slate)}
 
 /* Table */
 .table-wrap{overflow-x:auto}
@@ -311,6 +320,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
   .form-submit{flex-wrap:wrap}
   .row-item{flex-wrap:wrap}
   .lead-controls{justify-content:flex-start;width:100%}
+  .briefing-counts,.briefing-columns{grid-template-columns:1fr}
 }
 @media(max-width:460px){
   .metric-row{grid-template-columns:1fr}

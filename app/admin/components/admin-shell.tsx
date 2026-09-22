@@ -103,7 +103,7 @@ export function AdminShell({ auth }: { auth: AdminAuth }) {
             ))}
           </nav>
           <div className={`admin-content${tab === "agent" ? " admin-content-chat" : ""}`}>
-            {tab === "overview" && <OverviewTab go={go} />}
+            {tab === "overview" && <OverviewTab go={go} api={auth.api} />}
             {tab === "whatsapp" && <WhatsappTab api={auth.api} notify={notify} />}
             {tab === "inventory" && <InventoryTab api={auth.api} notify={notify} />}
             {tab === "leads" && <LeadsTab api={auth.api} />}
