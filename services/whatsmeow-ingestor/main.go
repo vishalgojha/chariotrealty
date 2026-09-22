@@ -1264,7 +1264,20 @@ func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
 	// Self-chat commands go to the AI agent, but we still forward the message.
 	// Check every message (not just IsFromMe) so phone-sent self-messages
 	// (from_me=false on the web) also trigger the agent.
-	if target, text, ok := selfChatCommand(s, evt); ok {
+	target, text, ok := selfChatCommand(s, evt)
+	// WhatsApp can deliver the owner's direct self-chat with a phone JID,
+	// LID, or device JID. For a broker explicitly configured as self-chat-only,
+	// a non-group text message is safe to route to the private agent even when
+	// the JID normalization above cannot identify the account.
+	if !ok && selfChatOnlyBroker(s.brokerID) && !info.IsGroup {
+		text = messageText(evt.Message)
+		if text != "" {
+			target = info.Chat.ToNonAD()
+			ok = true
+			log.Printf("[broker %s] self-chat fallback accepted chat=%s id=%s", s.brokerID, target.String(), info.ID)
+		}
+	}
+	if ok {
 		// Never let a slow AI/database request block Whatsmeow's event loop.
 		// The private self-chat request continues asynchronously below.
 		log.Printf("[broker %s] self-chat command received chat=%s id=%s from_me=%t", s.brokerID, target.String(), info.ID, info.IsFromMe)
