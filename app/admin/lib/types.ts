@@ -23,6 +23,7 @@ export type Lead = {
   intent: string;
   locality?: string;
   property_id?: string;
+  message?: string | null;
   created_at: string;
   status: string;
   priority?: "low" | "normal" | "high" | "urgent";

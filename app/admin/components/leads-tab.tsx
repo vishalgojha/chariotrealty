@@ -23,6 +23,8 @@ export function LeadsTab({ api }: { api: AdminApi }) {
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drafting, setDrafting] = useState<string | null>(null);
 
   const dueLeads = useMemo(() => leads.filter((lead) => lead.next_follow_up_at && new Date(lead.next_follow_up_at) <= new Date()).length, [leads]);
   const visibleLeads = useMemo(() => leads.filter((lead) => {
@@ -37,6 +39,24 @@ export function LeadsTab({ api }: { api: AdminApi }) {
     const payload = await readJson(response);
     if (!response.ok) throw new Error(payload.error || "Could not update lead");
     setLeads((items) => items.map((item) => item.id === id ? { ...item, ...payload.data } : item));
+  }
+
+  async function draftReply(lead: Lead) {
+    setDrafting(lead.id);
+    setError("");
+    try {
+      const response = await api.post("/api/agent/chat", {
+        text: `Draft a concise WhatsApp reply for this website lead using only verified Chariot internal inventory. Include up to 3 real matching properties with name, locality, price, and one reason each. Do not invent availability, bookings, or contact details. Lead: ${lead.name}; intent: ${lead.intent}; locality: ${lead.locality || "not specified"}; message: ${lead.message || "none"}. Return only the message to send, without analysis.`,
+        history: [],
+      });
+      const payload = await readJson(response);
+      if (!response.ok) throw new Error(payload.error || "Could not draft reply");
+      setDrafts((items) => ({ ...items, [lead.id]: String(payload.reply || "") }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not draft reply");
+    } finally {
+      setDrafting(null);
+    }
   }
 
   function localDateTime(value?: string | null) {
@@ -132,9 +152,18 @@ export function LeadsTab({ api }: { api: AdminApi }) {
                     value={localDateTime(lead.next_follow_up_at)}
                     onChange={(event) => updateLead(lead.id, { next_follow_up_at: event.target.value ? new Date(event.target.value).toISOString() : null }).catch((e) => setError(e.message))}
                   />
+                  <button type="button" className="btn btn-light btn-sm" onClick={() => draftReply(lead)} disabled={drafting === lead.id}>
+                    {drafting === lead.id ? "Drafting…" : "Draft reply"}
+                  </button>
                 </div>
                 <Pill>{lead.intent}</Pill>
                 <time className="row-time">{new Date(lead.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</time>
+                {drafts[lead.id] && (
+                  <div className="lead-draft">
+                    <textarea className="textarea" value={drafts[lead.id]} readOnly aria-label={`${lead.name} WhatsApp draft`} />
+                    <button type="button" className="btn btn-light btn-sm" onClick={() => navigator.clipboard.writeText(drafts[lead.id])}>Copy message</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
