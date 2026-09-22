@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   if (!url || !key) return NextResponse.json({ error: "Supabase is not configured" }, { status: 503 });
 
   const status = request.nextUrl.searchParams.get("status");
-  const query = new URLSearchParams({ select: "id,name,phone,email,intent,locality,property_id,message,source,status,city,created_at", order: "created_at.desc", limit: "100" });
+  const query = new URLSearchParams({ select: "id,name,phone,email,intent,locality,property_id,message,source,status,city,priority,next_follow_up_at,last_contacted_at,follow_up_note,created_at,updated_at", order: "created_at.desc", limit: "100" });
   if (status) query.set("status", `eq.${status}`);
   const response = await fetch(`${url}/rest/v1/chariot_leads?${query.toString()}`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" });
   if (!response.ok) return NextResponse.json({ error: "Could not read leads" }, { status: 502 });

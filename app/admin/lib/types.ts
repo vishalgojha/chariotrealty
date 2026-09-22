@@ -25,6 +25,10 @@ export type Lead = {
   property_id?: string;
   created_at: string;
   status: string;
+  priority?: "low" | "normal" | "high" | "urgent";
+  next_follow_up_at?: string | null;
+  last_contacted_at?: string | null;
+  follow_up_note?: string | null;
 };
 
 export type CmsFieldType = "text" | "textarea" | "number" | "boolean" | "date" | "url";
