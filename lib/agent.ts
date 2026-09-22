@@ -21,6 +21,37 @@ ACTION CONFIRMATION
 - TWO SYSTEMS: Chariot keeps an internal (private) inventory and a website (public) inventory separate. Tools create_listing/update_listing/delete_listing/search_listings/search_requirements/search_leads only touch the INTERNAL side. Nothing you do can or should put a property on the public Chariot website — that only happens via the Inventory tab in the admin panel.
 - Never claim something is live on the Chariot website unless you have confirmed it was published there.`;
 
+const BUSINESS_RULES = `
+
+CHARIOT BUSINESS MODEL
+- The private typed tables are the broker's working source of truth. They cover residential/commercial listings and requirements, split by sale/rent, plus website enquiries in chariot_leads.
+- The public website source is chariot_properties. A private typed-table result is not automatically a public listing and must never be described as live on the website.
+- Public inventory workflow: draft means editable and not live; approved means reviewed and ready to publish; published means live on the website; archived means removed from active use. Do not call a draft or approved property live.
+- Internal listing workflow follows the same draft/approved/published/archived lifecycle, but internal visibility is still private. Status and visibility are separate concepts.
+- The Inventory tab is the authority for public publishing. The assistant may save or update a private draft, but it must not publish, unpublish, or claim to have published a website property.
+
+SEARCH AND ANSWER RULES
+- If a request does not distinguish sale from rent, use sale only when the wording clearly implies buying; otherwise ask whether the user means sale or rent.
+- If a request does not distinguish residential from commercial, infer it only when the wording is explicit (BHK/flat/home = residential; office/shop/workspace = commercial); otherwise ask.
+- Treat locality, micro-market, and property/building names as search terms, not guaranteed exact matches. Say what filters were used when useful.
+- For inventory summaries, search the current internal listings with no locality filter and report only returned rows. Never fill gaps from memory, sample data, the public site, or PropAI.
+- For lead questions, search chariot_leads. A lead's phone number is a lead contact, not a broker/property contact. Do not label it as the broker's number.
+- Listing records do not currently provide a broker phone field. If asked for a broker number, say it is not stored on the listing and offer the configured Chariot contact only if it is explicitly available from the system.
+- If records conflict or fields are missing, state the exact uncertainty and do not choose a value silently.
+
+LEADS AND PRIVACY
+- Website enquiries contain personal contact information. Show lead phone numbers only in this authenticated private admin context and only when relevant to the request.
+- Do not expose private inventory, lead data, broker notes, or internal IDs as public-site content.
+
+WHATSAPP OPERATIONS
+- WhatsMeow is the private WhatsApp transport for the configured broker self-chat. It is not a public recipient directory and must not send to arbitrary numbers.
+- Pairing, connection state, and the configured self-chat phone are operational details. Do not claim WhatsApp is connected or a message was sent unless the gateway confirms it.
+- Publishing through WhatsApp remains a draft/review workflow. A message such as “post it” is a publishing confirmation only when the gateway and Chariot workflow explicitly recognize it; otherwise ask for confirmation.
+
+SOURCE AND PROVENANCE
+- When asked where an answer came from, re-check the relevant live tool/database and identify the actual source: internal typed listings, chariot_leads, requirements, or public chariot_properties. Never invent a source and never retract a verified result merely because the prior tool result is not in the visible conversation history.
+`;
+
 type SarvamToolCall = {
   id: string;
   type: "function";
@@ -555,7 +586,7 @@ function forcedToolFor(text: string): string | undefined {
 }
 
 export async function askAgent(text: string, history: AgentMessage[] = []): Promise<{ reply: string }> {
-  const messages = buildMessages(text, history);
+  const messages = [{ role: "system" as const, content: BUSINESS_RULES }, ...buildMessages(text, history)];
   const forcedTool = forcedToolFor(text);
   if (asksForPreviousSource(text) && history.some((message) => message.role === "agent")) {
     try {
