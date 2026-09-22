@@ -35,6 +35,7 @@ SEARCH AND ANSWER RULES
 - If a request does not distinguish residential from commercial, infer it only when the wording is explicit (BHK/flat/home = residential; office/shop/workspace = commercial); otherwise ask.
 - Treat locality, micro-market, and property/building names as search terms, not guaranteed exact matches. Say what filters were used when useful.
 - For inventory summaries, search the current internal listings with no locality filter and report only returned rows. Never fill gaps from memory, sample data, the public site, or PropAI.
+- For buyer-property matching, use the matching tool or search both the relevant requirement and listing tables. Return a fit score and the actual reasons for the match; a match is a shortlist, not a promise of availability or suitability.
 - For lead questions, search chariot_leads. A lead's phone number is a lead contact, not a broker/property contact. Do not label it as the broker's number.
 - Listing records do not currently provide a broker phone field. If asked for a broker number, say it is not stored on the listing and offer the configured Chariot contact only if it is explicitly available from the system.
 - If records conflict or fields are missing, state the exact uncertainty and do not choose a value silently.
@@ -83,6 +84,8 @@ type SearchArgs = {
   limit?: number;
 };
 
+type MatchArgs = SearchArgs & { requirement_id?: number };
+
 type CopyRequest = {
   category: "residential" | "commercial";
   transaction: "sale" | "rent";
@@ -103,6 +106,27 @@ const REQUIREMENT_TABLE = {
 } as Record<string, string>;
 
 const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "match_properties",
+      description:
+        "Find the best internal property matches for a buyer or tenant requirement. Use for requests like 'find a 2 BHK for a Bandra buyer under ₹4 crore' or 'match current requirements to inventory'. Return actual records with a fit score; never invent a match.",
+      parameters: {
+        type: "object",
+        properties: {
+          category: { type: "string", enum: ["residential", "commercial"] },
+          transaction: { type: "string", enum: ["sale", "rent"] },
+          locality: { type: "string" },
+          min_price: { type: "number" },
+          max_price: { type: "number" },
+          bhk: { type: "number" },
+          limit: { type: "number" },
+        },
+        required: [],
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -319,6 +343,31 @@ async function searchListings(args: SearchArgs): Promise<string> {
   return JSON.stringify({ results });
 }
 
+async function matchProperties(args: MatchArgs): Promise<string> {
+  const category = args.category || "residential";
+  const transaction = args.transaction || "sale";
+  const table = LISTING_TABLE[`${category}/${transaction}`];
+  if (!table) return JSON.stringify({ results: [] });
+
+  const parts = [`select=*`, `order=created_at.desc`, `limit=50`, `visibility=eq.internal`, suppressArchived(table)];
+  const priceCol = table.includes("_rent_") ? "monthly_rent" : "total_asking_price";
+  if (typeof args.max_price === "number") parts.push(`${priceCol}=lte.${args.max_price}`);
+  if (typeof args.min_price === "number") parts.push(`${priceCol}=gte.${args.min_price}`);
+  const rows = await restSelect(`${table}?${parts.filter(Boolean).join("&")}`);
+  const requestedLocality = args.locality?.toLowerCase().trim();
+  const scored = rows.map((row) => {
+    const locality = String(row.locality_raw || row.locality_resolved || row.micro_market || "");
+    const localityMatch = Boolean(requestedLocality && locality.toLowerCase().includes(requestedLocality));
+    const bhkMatch = typeof args.bhk === "number" && Number(row.bhk) === args.bhk;
+    const price = Number(row[priceCol]);
+    const budgetMatch = Number.isFinite(price) && (typeof args.min_price !== "number" || price >= args.min_price) && (typeof args.max_price !== "number" || price <= args.max_price);
+    const score = (requestedLocality ? (localityMatch ? 40 : 0) : 20) + (typeof args.bhk === "number" ? (bhkMatch ? 35 : 0) : 20) + (typeof args.max_price === "number" || typeof args.min_price === "number" ? (budgetMatch ? 25 : 0) : 20);
+    const reasons = [localityMatch && `locality matches ${args.locality}`, bhkMatch && `${args.bhk} BHK`, budgetMatch && "within budget"].filter(Boolean);
+    return { ...pick(row, table), match_score: score, why: reasons.length ? reasons.join(", ") : "closest available internal listing" };
+  }).sort((a, b) => b.match_score - a.match_score || String(a.name).localeCompare(String(b.name)));
+  return JSON.stringify({ results: scored.slice(0, Math.min(args.limit ?? 5, 10)) });
+}
+
 async function searchRequirements(args: SearchArgs): Promise<string> {
   const category = args.category || "residential";
   const transaction = args.transaction || "sale";
@@ -517,6 +566,8 @@ async function runTool(name: string, rawArgs: string): Promise<string> {
   switch (name) {
     case "search_listings":
       return searchListings(args as SearchArgs);
+    case "match_properties":
+      return matchProperties(args as MatchArgs);
     case "search_requirements":
       return searchRequirements(args as SearchArgs);
     case "search_leads":
@@ -579,6 +630,7 @@ function asksForPreviousSource(text: string) {
 
 function forcedToolFor(text: string): string | undefined {
   if (/\b(enquir|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
+  if (/\b(match|matched|fit|suitable|recommend.*buyer|recommend.*tenant|shortlist)\b/i.test(text)) return "match_properties";
   if (/\b(requirement|looking for|buyer|tenant|client wants|seeking)\b/i.test(text)) return "search_requirements";
   if (/\b(save|store|add|new property|new listing)\b/i.test(text)) return "create_listing";
   if (/\b(inventory|listing|property|properties|available|bhk|flat|apartment|office|villa|summari[sz]e)\b/i.test(text)) return "search_listings";
