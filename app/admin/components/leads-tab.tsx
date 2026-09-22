@@ -17,13 +17,20 @@ const STATUS_OPTIONS = [
 ];
 
 export function LeadsTab({ api }: { api: AdminApi }) {
-  const [status, setStatus] = useState("new");
+  const [status, setStatus] = useState("");
+  const [view, setView] = useState<"all" | "due" | "overdue">("all");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
 
   const dueLeads = useMemo(() => leads.filter((lead) => lead.next_follow_up_at && new Date(lead.next_follow_up_at) <= new Date()).length, [leads]);
+  const visibleLeads = useMemo(() => leads.filter((lead) => {
+    if (view === "all") return true;
+    if (!lead.next_follow_up_at) return false;
+    const due = new Date(lead.next_follow_up_at) <= new Date();
+    return view === "due" ? due : due && lead.status !== "closed" && lead.status !== "converted";
+  }), [leads, view]);
 
   async function updateLead(id: string, patch: Record<string, unknown>) {
     const response = await api.patch(`/api/leads/${id}`, patch);
@@ -71,19 +78,32 @@ export function LeadsTab({ api }: { api: AdminApi }) {
                   <option key={option.value || "all"} value={option.value}>{option.label}</option>
                 ))}
               </select>
+              <select className="select" aria-label="Lead follow-up view" value={view} onChange={(e) => setView(e.target.value as typeof view)}>
+                <option value="all">All leads</option>
+                <option value="due">Due now</option>
+                <option value="overdue">Open and due</option>
+              </select>
               <button type="submit" className="btn btn-dark" disabled={loading}>{loading ? "Loading…" : "Load leads"}</button>
             </form>
           }
         />
         {dueLeads > 0 && <Note tone="success">{dueLeads} follow-up{dueLeads === 1 ? "" : "s"} due now. Contact them before adding new opportunities.</Note>}
         {error && <Note tone="error">{error}</Note>}
-        {leads.length ? (
-          <div className="row-list">
-            {leads.map((lead) => (
+          {visibleLeads.length ? (
+            <div className="row-list">
+            {visibleLeads.map((lead) => (
               <div className="row-item lead-row" key={lead.id}>
                 <div className="row-main">
                   <strong>{lead.name}</strong>
                   <small>{lead.phone}{lead.locality ? ` · ${lead.locality}` : " · Mumbai"}</small>
+                  <input
+                    className="input lead-note"
+                    aria-label={`${lead.name} next action`}
+                    placeholder="Next action or follow-up note"
+                    value={lead.follow_up_note || ""}
+                    onChange={(event) => setLeads((items) => items.map((item) => item.id === lead.id ? { ...item, follow_up_note: event.target.value } : item))}
+                    onBlur={(event) => updateLead(lead.id, { follow_up_note: event.target.value }).catch((e) => setError(e.message))}
+                  />
                 </div>
                 <div className="lead-controls">
                   <select

@@ -165,6 +165,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
 .lead-controls{display:flex;align-items:center;gap:6px;flex:1 1 360px;flex-wrap:wrap;justify-content:flex-end}
 .lead-control{width:auto;min-width:94px;padding:7px 9px;font-size:11px}
 .lead-date{min-width:165px}
+.lead-note{display:block;max-width:300px;margin-top:7px;padding:7px 9px;font-size:11px}
 
 /* WhatsApp */
 .wa-status-row{margin-bottom:14px}
