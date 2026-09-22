@@ -41,7 +41,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
 .topbar-actions{display:flex;align-items:center;gap:10px;padding-bottom:4px}
 .admin-content{width:100%;max-width:1080px;margin:0 auto;padding:28px 40px 40px;flex:1}
 .admin-content-chat{display:flex;min-height:0}
-.admin-content-chat>.tab-stack{width:100%;min-height:0}
+.admin-content-chat>.agent-layout{width:100%;min-height:0}
 .tab-stack{display:flex;flex-direction:column;gap:24px}
 .admin-footer{max-width:1080px;width:100%;margin:0 auto;padding:18px 40px 34px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;color:var(--slate);font-size:12px;margin-top:8px}
 .admin-mobile-nav{display:none}
@@ -179,6 +179,19 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
 
 /* Agent */
 .agent-chat-card{display:flex;flex-direction:column;height:100%;min-height:0;padding:0;background:transparent;border:0;border-radius:0;overflow:hidden}
+.agent-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:22px;width:100%;height:100%;min-height:0}
+.agent-history{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);padding:14px 14px 18px 0}
+.agent-history-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 12px;border-bottom:1px solid var(--border);font-size:13px}
+.agent-new-chat{border:1px solid var(--border-dark);border-radius:7px;background:var(--bg-surface);color:var(--ink);padding:6px 8px;font-size:11px;font-weight:600;cursor:pointer}
+.agent-new-chat:hover{border-color:var(--bronze)}
+.agent-history-list{display:flex;flex-direction:column;gap:3px;overflow-y:auto;padding-top:10px}
+.agent-history-item{display:flex;flex-direction:column;gap:3px;width:100%;border:0;border-radius:8px;background:transparent;color:var(--ink);padding:9px 10px;text-align:left;cursor:pointer}
+.agent-history-item:hover{background:var(--bg-subtle)}
+.agent-history-item.active{background:var(--ink);color:#fff}
+.agent-history-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}
+.agent-history-item small{color:var(--slate);font-size:10px}
+.agent-history-item.active small{color:#c2cfe0}
+.agent-history-empty{color:var(--slate);font-size:11px;line-height:1.45;padding:4px 10px}
 .agent-chat-card .panel-head{width:min(820px,100%);padding:22px 0 8px;margin:0 auto}
 .agent-chat-card .panel-head .admin-muted{display:none}
 .agent-thread{display:flex;flex:1;min-height:0;width:min(820px,100%);margin:0 auto;flex-direction:column;justify-content:flex-start;gap:18px;overflow-y:scroll;padding:18px 8px 22px;scroll-behavior:smooth}
@@ -211,6 +224,11 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
   .agent-chat-card .panel-head{padding:22px 0 10px}
   .agent-thread{padding-left:20px;padding-right:20px}
   .agent-composer{padding-left:12px;padding-right:12px;padding-bottom:6px}
+  .agent-layout{display:flex;flex-direction:column;gap:0}
+  .agent-history{flex:0 0 auto;min-height:0;border-right:0;border-bottom:1px solid var(--border);padding:8px 0}
+  .agent-history-head{padding:0 0 8px;border-bottom:0}
+  .agent-history-list{flex-direction:row;overflow-x:auto;padding-top:0}
+  .agent-history-item{min-width:150px;border:1px solid var(--border);padding:7px 9px}
 }
 .chip-row span{font-size:11px;color:var(--slate);background:var(--bg-subtle);border:1px solid var(--border);border-radius:20px;padding:6px 10px}
 
