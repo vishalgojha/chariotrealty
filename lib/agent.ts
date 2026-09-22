@@ -630,7 +630,7 @@ function asksForPreviousSource(text: string) {
 
 function forcedToolFor(text: string): string | undefined {
   if (/\b(enquir|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
-  if (/\b(match|matched|fit|suitable|recommend.*buyer|recommend.*tenant|shortlist)\b/i.test(text)) return "match_properties";
+  if (/\b(match|matched|fit|suitable|shortlist|find\b.*\b(properties|listings)\b.*\b(buyer|tenant)|properties?\s+for\s+(a\s+)?(buyer|tenant)|listings?\s+for\s+(a\s+)?(buyer|tenant))\b/i.test(text)) return "match_properties";
   if (/\b(requirement|looking for|buyer|tenant|client wants|seeking)\b/i.test(text)) return "search_requirements";
   if (/\b(save|store|add|new property|new listing)\b/i.test(text)) return "create_listing";
   if (/\b(inventory|listing|property|properties|available|bhk|flat|apartment|office|villa|summari[sz]e)\b/i.test(text)) return "search_listings";
