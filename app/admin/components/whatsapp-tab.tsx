@@ -77,12 +77,12 @@ export function WhatsappTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   }
 
   async function waitForPairingCode() {
-    for (let attempt = 0; attempt < 45; attempt += 1) {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
       const next = await loadStatus();
-      if (next?.pairing_code || next?.connected || next?.connection_state === "pairing_error") return;
+      if (next?.connected || next?.connection_state === "pairing_error") return;
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
     }
-    setError("WhatsApp did not return a pairing code within 45 seconds. Click Refresh status or try again.");
+    setError("WhatsApp pairing did not complete within 2 minutes. Click Refresh status or try again.");
   }
 
   async function pair() {
