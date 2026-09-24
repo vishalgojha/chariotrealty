@@ -29,6 +29,7 @@ const EMPTY_FORM = {
   configuration: "",
   carpet_area_sqft: "",
   image_url: "",
+  media_type: "image" as "image" | "video",
   status: "draft" as "draft" | "approved" | "published",
 };
 
@@ -120,6 +121,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       configuration: property.configuration || "",
       carpet_area_sqft: property.carpet_area_sqft ? String(property.carpet_area_sqft) : "",
       image_url: property.image_url || "",
+      media_type: property.media_type || "image",
       status: property.status as "draft" | "approved" | "published",
     });
   }
@@ -158,8 +160,8 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       });
       const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || "Could not upload image");
-      patch({ image_url: payload.public_url });
-      notify("Image uploaded");
+       patch({ image_url: payload.public_url, media_type: payload.media_type || "image" });
+       notify(payload.media_type === "video" ? "Video uploaded" : "Image uploaded");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not upload image");
     } finally {
@@ -300,11 +302,11 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
           </label>
           <label className="field">
             <span>Image</span>
-            <input className="input" type="url" placeholder="Paste an image URL, or upload below" value={form.image_url} onChange={(e) => patch({ image_url: e.target.value })} />
+                 <input className="input" type="url" placeholder="Paste media URL, or upload below" value={form.image_url} onChange={(e) => patch({ image_url: e.target.value })} />
             <small className="field-hint">
               <label className="btn btn-light btn-sm" role="button">
                 Upload image
-                <input type="file" accept="image/*" className="file-input" onChange={uploadImage} disabled={busy} />
+                 <input type="file" accept="image/*,video/*" className="file-input" onChange={uploadImage} disabled={busy} />
               </label>
               {busy && <em> Uploading…</em>}
             </small>
@@ -363,7 +365,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
           <div className="row-list">
             {properties.map((property) => (
               <div className="row-item" key={property.id}>
-                {property.image_url && <img src={property.image_url} alt="" />}
+                {property.image_url && (property.media_type === "video" ? <video src={property.image_url} muted playsInline /> : <img src={property.image_url} alt="" />)}
                 <div className="row-main">
                   <strong>{property.name}</strong>
                   <small>{property.location}{property.price ? ` · ${property.price}` : ""}</small>

@@ -55,6 +55,7 @@ export type CmsProperty = {
   configuration?: string;
   carpet_area_sqft?: number;
   image_url?: string;
+  media_type?: "image" | "video";
   custom_fields?: Record<string, string | number | boolean>;
   status: string;
 };

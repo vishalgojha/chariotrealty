@@ -24,6 +24,7 @@ type ApiProperty = {
   possession?: string;
   reraApproved?: boolean;
   image?: string;
+  mediaType?: "image" | "video";
   description?: string;
   source?: string;
 };
@@ -35,6 +36,7 @@ type Property = {
   price: string;
   priceNote?: string;
   image?: string;
+  mediaType?: "image" | "video";
   tag: string;
   locale: string;
   specs: [string, string][];
@@ -129,6 +131,7 @@ function fromApi(row: ApiProperty): Property {
     price: price.price,
     priceNote: price.note,
     image: row.image,
+    mediaType: row.mediaType,
     tag,
     locale,
     specs,
@@ -151,7 +154,8 @@ function PropertyCard({ property }: { property: Property }) {
   const availableLinks = property.links.filter((link) => link.href && !link.href.includes("PLACEHOLDER"));
   return (
     <article className="card">
-      <div className={`card-media ${property.image ? "" : "private"}`} style={property.image ? { backgroundImage: `url('${property.image}')` } : undefined}>
+      <div className={`card-media ${property.image ? "" : "private"}`} style={property.image && property.mediaType !== "video" ? { backgroundImage: `url('${property.image}')` } : undefined}>
+        {property.image && property.mediaType === "video" && <video className="card-media-video" src={property.image} muted loop playsInline controls />}
         <span className={`tag ${property.category === "under-construction" ? "green" : ""}`}>{property.tag}</span>
         {property.locale && <span className="tag locale">{property.locale}</span>}
         {!property.image && <p className="private-note">Bare Shell / Fitted options available</p>}
