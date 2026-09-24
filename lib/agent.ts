@@ -268,6 +268,7 @@ function config() {
     apiKey: process.env.SARVAM_API_KEY || "",
     supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "",
     serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    whatsappBrokerId: process.env.CHARIOT_WHATSAPP_BROKER_ID || "",
   };
 }
 
@@ -367,6 +368,26 @@ async function matchProperties(args: MatchArgs): Promise<string> {
     return { ...pick(row, table), match_score: score, why: reasons.length ? reasons.join(", ") : "closest available internal listing" };
   }).sort((a, b) => b.match_score - a.match_score || String(a.name).localeCompare(String(b.name)));
   return JSON.stringify({ results: scored.slice(0, Math.min(args.limit ?? 5, 10)) });
+}
+
+async function searchWhatsappMessages(args: { query?: string; limit?: number }): Promise<string> {
+  const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
+  if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return JSON.stringify({ results: [], error: "Chariot WhatsApp storage is not configured" });
+  const limit = Math.min(args.limit ?? 10, 20);
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const parts = [
+    "select=message,message_type,sender,sender_phone,group_name,message_timestamp,created_at",
+    `broker_id=eq.${encodeURIComponent(whatsappBrokerId)}`,
+    `created_at=gte.${encodeURIComponent(cutoff)}`,
+    "order=message_timestamp.desc",
+    `limit=${limit}`,
+  ];
+  if (args.query?.trim()) {
+    const query = encodeURIComponent(args.query.trim());
+    parts.push(`or=(message.ilike.*${query}*,sender_phone.ilike.*${query}*,group_name.ilike.*${query}*)`);
+  }
+  const rows = await restSelect(`chariot_whatsapp_messages?${parts.join("&")}`);
+  return JSON.stringify({ results: rows, retention: "Only the last 30 days are searchable." });
 }
 
 async function searchRequirements(args: SearchArgs): Promise<string> {
@@ -569,6 +590,8 @@ async function runTool(name: string, rawArgs: string): Promise<string> {
       return searchListings(args as SearchArgs);
     case "match_properties":
       return matchProperties(args as MatchArgs);
+    case "search_whatsapp_messages":
+      return searchWhatsappMessages(args as { query?: string; limit?: number });
     case "search_requirements":
       return searchRequirements(args as SearchArgs);
     case "search_leads":
@@ -631,6 +654,7 @@ function asksForPreviousSource(text: string) {
 
 function forcedToolFor(text: string): string | undefined {
   if (/\b(enquir|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
+  if (/\b(whatsapp|self[- ]chat|raw message|ingest|ingested|message archive)\b/i.test(text)) return "search_whatsapp_messages";
   if (/\b(match|matched|fit|suitable|shortlist|find\b.*\b(properties|listings)\b.*\b(buyer|tenant)|properties?\s+for\s+(a\s+)?(buyer|tenant)|listings?\s+for\s+(a\s+)?(buyer|tenant))\b/i.test(text)) return "match_properties";
   if (/\b(requirement|looking for|buyer|tenant|client wants|seeking)\b/i.test(text)) return "search_requirements";
   if (/\b(save|store|add|new property|new listing)\b/i.test(text)) return "create_listing";

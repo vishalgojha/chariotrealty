@@ -15,6 +15,22 @@ import (
 	"time"
 )
 
+func startChariotRawRetention(db *sql.DB) {
+	prune := func() {
+		if _, err := db.ExecContext(context.Background(), `select public.prune_chariot_whatsapp_messages(interval '30 days')`); err != nil {
+			log.Printf("chariot WhatsApp retention failed: %v", err)
+		}
+	}
+	go func() {
+		prune()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			prune()
+		}
+	}()
+}
+
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 // tenantCache maps broker_id → organization_id (resolved once per session).
@@ -88,17 +104,11 @@ func resolveLIDPhone(db *sql.DB, senderJID string) string {
 	return pn
 }
 
-// insertRawMessage writes a WhatsApp message directly into raw_messages.
-// The extraction worker polls raw_messages WHERE processed=false and handles
-// the full extraction pipeline.
+// insertRawMessage writes a WhatsApp message into Chariot's isolated raw store.
+// PropAI's raw_messages database is intentionally not used here.
 //
 // Returns the inserted row ID.
 func (sm *SessionManager) insertRawMessage(brokerID string, payload map[string]interface{}) (int64, error) {
-	tenantID, err := resolveTenantID(sm.db, brokerID)
-	if err != nil || strings.TrimSpace(tenantID) == "" {
-		return 0, fmt.Errorf("tenant resolution failed for broker %s: %w", brokerID, err)
-	}
-
 	data, _ := payload["data"].(map[string]interface{})
 	if data == nil {
 		data = payload
@@ -180,40 +190,24 @@ func (sm *SessionManager) insertRawMessage(brokerID string, payload map[string]i
 	attachments := buildAttachments(msg, data)
 	replyCtx := buildReplyContext(msg)
 	messageUID := fmt.Sprintf("%s:%s:%s", brokerID, groupJID, key["id"])
-	// Live messages are inserted unprocessed so the extraction worker owns the
-	// async parse and can report truthful attempt/progress state. History sync
-	// is retained as source evidence/conversation history, but is not a parsing
-	// input; mark it processed and suppressed at ingestion so reconnects cannot
-	// flood the extraction queue.
-	isHistorySync := strings.EqualFold(strings.TrimSpace(fmt.Sprint(data["source"])), "history_sync")
-	processed := isHistorySync
-	extractionSuppressed := isHistorySync
-	pipelineVersion := "go-ingestor"
-	if isHistorySync {
-		pipelineVersion = "history-sync-suppressed"
-	}
-
 	eventID := fmt.Sprintf("%s:%s", brokerID, key["id"])
 
 	var rawID int64
-	err = sm.db.QueryRowContext(context.Background(), `
-			INSERT INTO raw_messages (
-				tenant_id, group_name, sender, sender_jid, sender_phone,
-				message, message_type, is_group, timestamp, source,
-				raw_payload, message_uid, event_id, attachments, reply_context,
-				processed, extraction_suppressed, pipeline_version, synced_at
+	err := sm.db.QueryRowContext(context.Background(), `
+			INSERT INTO chariot_whatsapp_messages (
+				broker_id, group_name, sender, sender_jid, sender_phone,
+				message, message_type, is_group, message_timestamp,
+				raw_payload, message_uid, event_id, attachments, reply_context
 			) VALUES (
 				$1, $2, $3, $4, $5,
-				$6, $7, $8, $9, 'WHATSAPP',
-				$10::jsonb, $11, $12, $13::jsonb, $14::jsonb,
-				$15, $16, $17, NOW()
+				$6, $7, $8, $9,
+				$10::jsonb, $11, $12, $13::jsonb, $14::jsonb
 			)
-			ON CONFLICT (tenant_id, message_uid) WHERE source = 'WHATSAPP' DO NOTHING
+			ON CONFLICT (broker_id, message_uid) DO NOTHING
 			RETURNING id`,
-			tenantID, groupName, senderName, senderJID, senderPhone,
+			brokerID, groupName, senderName, senderJID, senderPhone,
 			msgText, msgType, isGroup, ts,
 			rawPayload, messageUID, eventID, attachments, replyCtx,
-			processed, extractionSuppressed, pipelineVersion,
 		).Scan(&rawID)
 	if err != nil {
 		// ON CONFLICT DO NOTHING + RETURNING id yields no rows for duplicates.
@@ -221,7 +215,7 @@ func (sm *SessionManager) insertRawMessage(brokerID string, payload map[string]i
 		// treating the duplicate as a hard failure.
 		if err == sql.ErrNoRows {
 			_ = sm.db.QueryRowContext(context.Background(),
-				`SELECT id FROM raw_messages WHERE tenant_id = $1 AND message_uid = $2 AND source = 'WHATSAPP'`, tenantID, messageUID,
+			`SELECT id FROM chariot_whatsapp_messages WHERE broker_id = $1 AND message_uid = $2`, brokerID, messageUID,
 			).Scan(&rawID)
 			if rawID > 0 {
 				return rawID, nil

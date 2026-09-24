@@ -1281,6 +1281,17 @@ func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
 		// Never let a slow AI/database request block Whatsmeow's event loop.
 		// The private self-chat request continues asynchronously below.
 		log.Printf("[broker %s] self-chat command received chat=%s id=%s from_me=%t", s.brokerID, target.String(), info.ID, info.IsFromMe)
+		selfChatPayload := map[string]interface{}{"data": map[string]interface{}{
+			"key": map[string]interface{}{"remoteJid": info.Chat.String(), "id": string(info.ID)},
+			"message": marshalMessage(evt.Message),
+			"message_type": extractMessageType(evt.Message),
+			"pushName": info.PushName,
+			"messageTimestamp": info.Timestamp.Unix(),
+			"sender": map[string]interface{}{"id": info.Sender.String(), "name": info.PushName},
+		}}
+		if _, rawErr := sm.insertRawMessage(s.brokerID, selfChatPayload); rawErr != nil {
+			log.Printf("[broker %s] self-chat raw message insert failed: %v", s.brokerID, rawErr)
+		}
 		// Surface the read acknowledgement immediately, before the agent or
 		// database work starts. This is the blue-tick/read signal the owner sees
 		// while PropAI prepares the answer.
@@ -3446,6 +3457,7 @@ func main() {
 	if err := ensureGroupMembersTable(db); err != nil {
 		log.Fatalf("error creating group members table: %v", err)
 	}
+	startChariotRawRetention(db)
 
 	// Whatsmeow persists Signal sessions and identity keys while encrypting and
 	// decrypting messages. A single shared connection lets one slow query block
