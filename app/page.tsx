@@ -196,7 +196,7 @@ export default function Home() {
   return (
     <>
       <nav>
-        <a className="logo" href="#top">Chariot <span>Realty</span></a>
+        <a className="logo logo-image-link" href="#top"><img src="/images.jpeg" alt="Chariot Realty" /></a>
         <div className="nav-links"><a href="#inventory">Residential</a><a href="#inventory">Commercial</a><a href="#inventory">Under Construction</a></div>
         <div className="nav-actions"><a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer" className="nav-insta"><InstagramIcon />@chariotrealty.in</a><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`} className="nav-cta">WhatsApp Kapil</a></div>
       </nav>
@@ -227,7 +227,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer><div className="f-left"><a className="logo" href="#top">Chariot <span>Realty</span></a><p>Bandra West · BKC · Bandra East · Khar · Santacruz</p></div><div className="f-right"><p>Kapil Gopal Ojha · +91 97737 57759</p><p><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`}>WhatsApp</a> · <a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer">@chariotrealty.in</a></p></div></footer>
+      <footer><div className="f-left"><a className="logo logo-image-link" href="#top"><img src="/images.jpeg" alt="Chariot Realty" /></a><p>Bandra West · BKC · Bandra East · Khar · Santacruz</p></div><div className="f-right"><p>Kapil Gopal Ojha · +91 97737 57759</p><p><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`}>WhatsApp</a> · <a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer">@chariotrealty.in</a></p></div></footer>
     </>
   );
 }

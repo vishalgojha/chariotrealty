@@ -10,9 +10,7 @@ export function AdminApp() {
   if (!auth.ready) {
     return (
       <main className="admin-splash">
-        <div className="splash-mark">
-          Chariot<em> Realty</em>
-        </div>
+        <img className="splash-logo-image" src="/images.jpeg" alt="Chariot Realty" />
         <p className="admin-eyebrow">Opening your private market desk…</p>
       </main>
     );

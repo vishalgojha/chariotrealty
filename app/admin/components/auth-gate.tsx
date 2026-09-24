@@ -71,10 +71,8 @@ export function AuthGate({ auth }: { auth: AdminAuth }) {
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={handleSubmit}>
+        <img className="auth-logo-image" src="/images.jpeg" alt="Chariot Realty" />
         <p className="admin-eyebrow">Chariot Realty · Mumbai</p>
-        <div className="auth-wordmark">
-          Chariot<em> Realty</em>
-        </div>
         <h1>{title}</h1>
         <p className="auth-lede">{lede}</p>
         {auth.sessionExpired && <p className="note note-error">Your secure session expired. Please sign in again.</p>}
