@@ -8,8 +8,8 @@ export const metadata: Metadata = {
   description: "Verified prime rentals, corporate workspaces, and direct developer mandates across Bandra and BKC.",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: ["/images.jpeg", "/icon.svg"],
-    apple: "/images.jpeg",
+    icon: ["/favicon.ico", "/icon.svg"],
+    apple: "/apple-touch-icon.png",
   },
   appleWebApp: {
     capable: true,

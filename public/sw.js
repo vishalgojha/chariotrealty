@@ -1,5 +1,5 @@
-const CACHE = "chariot-realty-v3";
-const SHELL = ["/manifest.webmanifest", "/icon.svg", "/icon-192.svg", "/icon-512.svg"];
+const CACHE = "chariot-realty-v4";
+const SHELL = ["/manifest.webmanifest", "/favicon.ico", "/app-icon-any.png", "/app-icon-maskable.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
