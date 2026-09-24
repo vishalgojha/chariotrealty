@@ -23,6 +23,6 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json(await askAgent(text, history));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "PropAI agent unavailable" }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Chariot agent unavailable" }, { status: 502 });
   }
 }

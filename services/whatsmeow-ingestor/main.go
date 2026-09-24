@@ -34,10 +34,10 @@ import (
 
 var (
 	databaseURL          = resolveDatabaseURL()
-	webhookURL           = getEnv("PROPAI_WEBHOOK_URL", "https://api.propai.live/webhook")
-	apiURL               = getEnv("PROPAI_API_URL", "https://api.propai.live")
-	extractionTriggerURL = getEnv("PROPAI_EXTRACTION_TRIGGER_URL", apiURL+"/trigger-extraction")
-	instanceName         = getEnv("PROPAI_INSTANCE_NAME", "propai-whatsmeow")
+	webhookURL           = getEnv("CHARIOT_WHATSAPP_WEBHOOK_URL", "")
+	apiURL               = getEnv("CHARIOT_API_URL", "https://api.chariotrealty.in")
+	extractionTriggerURL = getEnv("CHARIOT_EXTRACTION_TRIGGER_URL", "")
+	instanceName         = getEnv("CHARIOT_WHATSAPP_INSTANCE_NAME", "chariot-whatsmeow")
 	sendPort             = getEnv("PROPAI_SEND_PORT", "3001")
 	statusClient         = &http.Client{Timeout: 5 * time.Second}
 )

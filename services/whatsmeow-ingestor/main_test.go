@@ -37,7 +37,9 @@ func clearDatabaseEnvironment(t *testing.T) {
 
 func TestFireWebhookSendsToEndpoint(t *testing.T) {
 	previousClient := httpClient
+	previousWebhook := webhookURL
 	var received []byte
+	webhookURL = "http://test.internal/webhook"
 	httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		received, _ = io.ReadAll(r.Body)
 		return &http.Response{
@@ -46,7 +48,7 @@ func TestFireWebhookSendsToEndpoint(t *testing.T) {
 			Header:     make(http.Header),
 		}, nil
 	})}
-	defer func() { httpClient = previousClient }()
+	defer func() { httpClient = previousClient; webhookURL = previousWebhook }()
 
 	fireWebhook(map[string]interface{}{"event": "test"})
 	if string(received) != `{"event":"test"}` {
@@ -56,6 +58,8 @@ func TestFireWebhookSendsToEndpoint(t *testing.T) {
 
 func TestFireWebhookLogsNonSuccessResponse(t *testing.T) {
 	previousClient := httpClient
+	previousWebhook := webhookURL
+	webhookURL = "http://test.internal/webhook"
 	httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusServiceUnavailable,
@@ -63,7 +67,7 @@ func TestFireWebhookLogsNonSuccessResponse(t *testing.T) {
 			Header:     make(http.Header),
 		}, nil
 	})}
-	defer func() { httpClient = previousClient }()
+	defer func() { httpClient = previousClient; webhookURL = previousWebhook }()
 
 	fireWebhook(map[string]interface{}{"event": "test"})
 }

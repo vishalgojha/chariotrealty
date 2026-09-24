@@ -229,6 +229,9 @@ func (sm *SessionManager) insertRawMessage(brokerID string, payload map[string]i
 // fireWebhook delivers a non-message event directly to the API via HTTP POST.
 // No outbox, no retry — these events are low-volume and informational.
 func fireWebhook(payload map[string]interface{}) {
+	if strings.TrimSpace(webhookURL) == "" {
+		return
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return
@@ -257,6 +260,9 @@ func fireWebhook(payload map[string]interface{}) {
 // non-blocking — the message is already persisted; failure here just means
 // extraction waits for the polling worker.
 func triggerExtraction(rawID int64, tenantID string) {
+	if strings.TrimSpace(extractionTriggerURL) == "" {
+		return
+	}
 	if rawID <= 0 {
 		return
 	}
