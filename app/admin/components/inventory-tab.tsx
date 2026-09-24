@@ -173,6 +173,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     const payload = await readJson(response);
     if (!response.ok) return setError(payload.error || "Could not update property");
     setProperties((items) => items.map((item) => (item.id === id ? { ...item, status } : item)));
+    notify(status === "published" ? "Published to the website" : "Property unpublished");
   }
 
   function setCustomValue(key: string, type: CmsFieldType, raw: string) {
