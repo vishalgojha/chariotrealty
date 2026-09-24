@@ -258,8 +258,8 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
             <input className="input" placeholder="e.g. Ten BKC" value={form.name} onChange={(e) => patch({ name: e.target.value })} required />
           </label>
           <label className="field">
-            <span>Slug</span>
-            <input className="input" placeholder="e.g. ten-bkc" value={form.slug} onChange={(e) => patch({ slug: e.target.value })} required />
+              <span>URL slug (automatic)</span>
+              <input className="input" placeholder="Generated from name and locality" value={form.slug} readOnly />
           </label>
           <label className="field">
             <span>Category</span>
