@@ -170,6 +170,22 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "search_whatsapp_messages",
+      description:
+        "Search Chariot's retained WhatsApp self-chat and group messages. Use this when Kapil asks for listings, requirements, prices, or messages from WhatsApp, WhatsApp groups, raw messages, ingested messages, or the message archive. These are raw source messages from the last 30 days, not confirmed public listings; clearly label them as WhatsApp-sourced leads or opportunities.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Words to find in message text, sender phone, or group name. Use the most useful property/locality terms." },
+          limit: { type: "number", description: "Maximum number of raw messages to return, from 1 to 20." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "search_leads",
       description:
         "Search Chariot's website leads (people who enquired about a property on the website). Use for \"recent enquiries\" or \"anyone asking about Bandra\".",
@@ -654,7 +670,7 @@ function asksForPreviousSource(text: string) {
 
 function forcedToolFor(text: string): string | undefined {
   if (/\b(enquir|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
-  if (/\b(whatsapp|self[- ]chat|raw message|ingest|ingested|message archive)\b/i.test(text)) return "search_whatsapp_messages";
+  if (/\b(whatsapp|self[- ]chat|raw message|raw listing|ingest|ingested|message archive|group messages?|from (?:a|the) whatsapp group)\b/i.test(text)) return "search_whatsapp_messages";
   if (/\b(match|matched|fit|suitable|shortlist|find\b.*\b(properties|listings)\b.*\b(buyer|tenant)|properties?\s+for\s+(a\s+)?(buyer|tenant)|listings?\s+for\s+(a\s+)?(buyer|tenant))\b/i.test(text)) return "match_properties";
   if (/\b(requirement|looking for|buyer|tenant|client wants|seeking)\b/i.test(text)) return "search_requirements";
   if (/\b(save|store|add|new property|new listing)\b/i.test(text)) return "create_listing";
