@@ -277,10 +277,14 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
 .auth-public:hover{color:var(--ink)}
 
 /* Toast + confirm */
-.app-toast{position:fixed;right:28px;bottom:28px;z-index:120;display:flex;align-items:center;gap:10px;max-width:360px;padding:13px 16px;border-radius:10px;background:var(--ink);color:#fff;box-shadow:0 16px 38px rgba(11,31,58,.22);font-size:13px;font-weight:600}
-.app-toast span{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--emerald);color:#fff;font-size:12px}
-.app-toast.error{background:#7e2d26}
-.app-toast.error span{background:#fff;color:#7e2d26}
+.app-toast{position:fixed;right:28px;bottom:28px;z-index:120;display:flex;align-items:center;gap:11px;max-width:380px;min-width:260px;padding:10px 13px 10px 10px;border:1px solid rgba(160,120,48,.55);border-radius:12px;background:var(--ink);color:#fff;box-shadow:0 16px 38px rgba(11,31,58,.28);font-size:13px}
+.app-toast-logo{width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.app-toast-copy{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0}
+.app-toast-copy strong{color:#e0b64f;font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+.app-toast-copy span{color:rgba(255,255,255,.9);font-size:13px;font-weight:600;line-height:1.35}
+.app-toast-mark{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--emerald);color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
+.app-toast.error{border-color:rgba(224,182,79,.75);background:#542b28}
+.app-toast.error .app-toast-mark{background:#fff;color:#7e2d26}
 .confirm-backdrop{position:fixed;inset:0;z-index:110;display:grid;place-items:center;padding:20px;background:rgba(11,31,58,.45);backdrop-filter:blur(5px)}
 .confirm-card{width:min(100%,430px);background:var(--bg-page);border:1px solid var(--border-dark);border-radius:14px;padding:26px;box-shadow:0 24px 70px rgba(11,31,58,.25)}
 .confirm-card h2{font-family:'Fraunces',Georgia,serif;font-size:26px;margin:0 0 8px;letter-spacing:-.02em}
@@ -330,7 +334,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:18px 4
   .market-grid{grid-template-columns:1fr}
   .wa-grid{grid-template-columns:1fr}
   .wa-grid>div:nth-child(3){grid-column:auto}
-  .app-toast{right:16px;left:16px;max-width:none}
+  .app-toast{right:16px;bottom:16px;left:16px;max-width:none;min-width:0}
 }
 .card-media-video{width:100%;height:100%;object-fit:cover;display:block}
 @media(max-width:460px){.hero-stats{gap:16px}.specs{gap:10px}}

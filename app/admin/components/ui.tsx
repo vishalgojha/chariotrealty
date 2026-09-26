@@ -58,9 +58,13 @@ export function Note({ tone, children }: { tone: "error" | "success"; children: 
 export function Toast({ toast }: { toast: { tone: ToastTone; message: string } | null }) {
   if (!toast) return null;
   return (
-    <div className={`app-toast ${toast.tone}`} role="status">
-      <span>{toast.tone === "success" ? "✓" : "!"}</span>
-      {toast.message}
+    <div className={`app-toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"} aria-live="polite">
+      <img className="app-toast-logo" src="/images.jpeg" alt="" />
+      <span className="app-toast-copy">
+        <strong>Chariot Realty</strong>
+        <span>{toast.message}</span>
+      </span>
+      <span className="app-toast-mark" aria-hidden="true">{toast.tone === "success" ? "✓" : "!"}</span>
     </div>
   );
 }
