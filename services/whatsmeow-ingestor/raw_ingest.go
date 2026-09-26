@@ -13,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 )
 
 func startChariotRawRetention(db *sql.DB) {
@@ -41,6 +44,49 @@ type tenantCache struct {
 
 var tenants = &tenantCache{cache: make(map[string]string)}
 var lidPhoneCache sync.Map
+var groupNameCache sync.Map
+
+// buildGroupRawPayload renders a group message in the same envelope the normal
+// ingestion path persists, so a raw row is identical whether or not the broker
+// is self-chat-only. Nothing here is forwarded anywhere: the row is only stored.
+func buildGroupRawPayload(brokerID string, evt *events.Message, info types.MessageInfo) map[string]interface{} {
+	key := map[string]interface{}{
+		"remoteJid": info.Chat.String(),
+		"fromMe":    info.IsFromMe,
+		"id":        string(info.ID),
+	}
+	if info.IsGroup {
+		key["participant"] = info.Sender.String()
+	}
+	return map[string]interface{}{
+		"event": "MESSAGES_UPSERT",
+		"data": map[string]interface{}{
+			"key":              key,
+			"message":          marshalMessage(evt.Message),
+			"message_type":     extractMessageType(evt.Message),
+			"pushName":         info.PushName,
+			"messageTimestamp": info.Timestamp.Unix(),
+			"sender": map[string]interface{}{
+				"id":   info.Sender.String(),
+				"name": info.PushName,
+			},
+			"instance":  instanceName,
+			"broker_id": brokerID,
+		},
+	}
+}
+
+// resolveGroupName prefers the WhatsApp group subject captured by the group
+// directory sync, because the agent searches WhatsApp messages by group name.
+// Falls back to the group JID, which is all WhatsApp delivers with the message.
+func resolveGroupName(groupJID string) string {
+	if cached, ok := groupNameCache.Load(groupJID); ok {
+		if name, ok := cached.(string); ok && name != "" {
+			return name
+		}
+	}
+	return groupJID
+}
 
 func (tc *tenantCache) get(brokerID string) (string, bool) {
 	tc.mu.RLock()
@@ -162,7 +208,7 @@ func (sm *SessionManager) insertRawMessage(brokerID string, payload map[string]i
 	isGroup := strings.HasSuffix(groupJID, "@g.us")
 	groupName := ""
 	if isGroup {
-		groupName = groupJID
+		groupName = resolveGroupName(groupJID)
 	}
 
 	var ts interface{} = time.Now().UTC().Format(time.RFC3339)

@@ -14,6 +14,8 @@ HOW TO ANSWER
 - If the correct answer needs a decision, give him a simple choice with a clear next step, e.g. "Say 1 to see 3 more, or 2 to save this one."
 - When Kapil dictates a property or a lead, repeat back the key details (area, price, who, when) in one or two lines and confirm you saved it — he wants reassurance.
 - Never invent data. If the tools return nothing, say "I don't have that yet" and offer the closest real match or ask him for the details to save.
+- WhatsApp group and self-chat messages are stored raw. When Kapil asks for them, search them and say where each one came from (group and sender). A WhatsApp message is an unverified lead, never a Chariot inventory listing.
+- Extraction is on demand only. Turn a WhatsApp message into a listing draft only when Kapil explicitly asks to save or extract that specific message. Never extract everything a search returns.
 
 ACTION CONFIRMATION
 - When Kapil dictates a new property, save it as a draft with create_listing. This writes to Chariot's INTERNAL inventory — private, never shown on the website. Confirm in one line ("Saved as a draft: 2 BHK, Bandra West, ₹3.2 crore. To put it on the website, open Inventory in the admin panel and click Publish.").
@@ -49,6 +51,11 @@ WHATSAPP OPERATIONS
 - WhatsMeow is the private WhatsApp transport for the configured broker self-chat. It is not a public recipient directory and must not send to arbitrary numbers.
 - Pairing, connection state, and the configured self-chat phone are operational details. Do not claim WhatsApp is connected or a message was sent unless the gateway confirms it.
 - Publishing through WhatsApp remains a draft/review workflow. A message such as “post it” is a publishing confirmation only when the gateway and Chariot workflow explicitly recognize it; otherwise ask for confirmation.
+- Raw WhatsApp messages are the source of truth for WhatsApp-sourced leads. Only the last 30 days are retained and searchable. If a search returns nothing, say no matching messages were found in the retained window — do not guess at older messages.
+- ON-DEMAND EXTRACTION: a WhatsApp message becomes a structured record only when Kapil asks for it. First call search_whatsapp_messages, then call extract_whatsapp_listing with that message's id. Never call extract_whatsapp_listing for every message a search returns, and never extract without an explicit request.
+- One message can be extracted once per table. If extract_whatsapp_listing reports already_extracted, do not create another listing; show Kapil the existing draft instead.
+- An extracted listing is an INTERNAL draft with source "whatsapp" that stays linked to the raw message it came from. Report what was extracted and the source (group, sender, message time) in one line, and say it needs review in the admin Inventory tab.
+- Extraction never publishes. An extracted draft is private, unverified, and not live on the website until Kapil reviews and publishes it in the admin Inventory tab.
 
 SOURCE AND PROVENANCE
 - When asked where an answer came from, re-check the relevant live tool/database and identify the actual source: internal typed listings, chariot_leads, requirements, or public chariot_properties. Never invent a source and never retract a verified result merely because the prior tool result is not in the visible conversation history.
@@ -106,6 +113,25 @@ const REQUIREMENT_TABLE = {
   "commercial/rent": "chariot_commercial_rent_requirements",
 } as Record<string, string>;
 
+const LISTING_PROPERTIES = {
+  name: { type: "string", description: "Property/building name, or a short title. Required." },
+  category: { type: "string", enum: ["residential", "commercial"], description: "Default residential." },
+  transaction: { type: "string", enum: ["sale", "rent"], description: "Default sale." },
+  locality: { type: "string", description: "Locality e.g. Bandra West. Required." },
+  micro_market: { type: "string", description: "Micro-market e.g. Bandra West." },
+  summary_title: { type: "string", description: "Short headline for the listing, default to the name." },
+  bhk: { type: "number", description: "Number of bedrooms for residential (1, 2, 3...)." },
+  configuration_type: { type: "string", description: "e.g. '2 BHK - 1 Hall - 2 Bathroom'." },
+  carpet_area_sqft: { type: "number", description: "Carpet area in sq ft." },
+  total_asking_price: { type: "number", description: "Asking price in ₹ for a sale listing (total)." },
+  monthly_rent: { type: "number", description: "Monthly rent in ₹ for a rental listing." },
+  price_raw_text: { type: "string", description: "How Kapil said the price, e.g. '₹3.2 crore' or '85k/month'." },
+  furnishing_status: { type: "string", description: "e.g. Semi-Furnished, Furnished, Unfurnished." },
+  possession_status: { type: "string", description: "e.g. Ready to move, Dec 2026." },
+  car_parking_count: { type: "number", description: "Car parking count." },
+  description: { type: "string", description: "Extra notes Kapil gave (view, amenities, pets, terms)." },
+} as const;
+
 const TOOLS = [
   {
     type: "function",
@@ -146,6 +172,22 @@ const TOOLS = [
           limit: { type: "number", description: "Max rows to return (default 5)." },
         },
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "extract_whatsapp_listing",
+      description:
+        "On-demand extraction: turn ONE raw WhatsApp message (an id from search_whatsapp_messages) into a private INTERNAL draft listing linked to that message. Call this ONLY when Kapil explicitly asks to save/extract/turn a specific WhatsApp message into a listing — never for every message a search returns. The message text is already provided by the search result; extract the structured fields from it, never invent them. Fails safely if the message was already extracted.",
+      parameters: {
+        type: "object",
+        properties: {
+          raw_message_id: { type: "number", description: "id of the raw WhatsApp message from search_whatsapp_messages. Required." },
+          ...LISTING_PROPERTIES,
+        },
+        required: ["raw_message_id", "name", "locality"],
       },
     },
   },
@@ -207,24 +249,7 @@ const TOOLS = [
         "Create a new INTERNAL (private) property draft in Kapil's inventory when he dictates one (e.g. \"2 BHK in Bandra West, 1100 sqft, ₹3.2 crore, semi-furnished, sea view\"). Internal drafts are private to Chariot — they never show on the website. Only call this when the user is dictating a NEW property.",
       parameters: {
         type: "object",
-        properties: {
-          name: { type: "string", description: "Property/building name, or a short title. Required." },
-          category: { type: "string", enum: ["residential", "commercial"], description: "Default residential." },
-          transaction: { type: "string", enum: ["sale", "rent"], description: "Default sale." },
-          locality: { type: "string", description: "Locality e.g. Bandra West. Required." },
-          micro_market: { type: "string", description: "Micro-market e.g. Bandra West." },
-          summary_title: { type: "string", description: "Short headline for the listing, default to the name." },
-          bhk: { type: "number", description: "Number of bedrooms for residential (1, 2, 3...)." },
-          configuration_type: { type: "string", description: "e.g. '2 BHK - 1 Hall - 2 Bathroom'." },
-          carpet_area_sqft: { type: "number", description: "Carpet area in sq ft." },
-          total_asking_price: { type: "number", description: "Asking price in ₹ for a sale listing (total)." },
-          monthly_rent: { type: "number", description: "Monthly rent in ₹ for a rental listing." },
-          price_raw_text: { type: "string", description: "How Kapil said the price, e.g. '₹3.2 crore' or '85k/month'." },
-          furnishing_status: { type: "string", description: "e.g. Semi-Furnished, Furnished, Unfurnished." },
-          possession_status: { type: "string", description: "e.g. Ready to move, Dec 2026." },
-          car_parking_count: { type: "number", description: "Car parking count." },
-          description: { type: "string", description: "Extra notes Kapil gave (view, amenities, pets, terms)." },
-        },
+        properties: LISTING_PROPERTIES,
         required: ["name", "locality"],
       },
     },
@@ -392,7 +417,7 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
   const limit = Math.min(args.limit ?? 10, 20);
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const parts = [
-    "select=message,message_type,sender,sender_phone,group_name,message_timestamp,created_at",
+    "select=id,message,message_type,sender,sender_phone,group_name,is_group,message_timestamp,created_at",
     `broker_id=eq.${encodeURIComponent(whatsappBrokerId)}`,
     `created_at=gte.${encodeURIComponent(cutoff)}`,
     "order=message_timestamp.desc",
@@ -403,7 +428,11 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
     parts.push(`or=(message.ilike.*${query}*,sender_phone.ilike.*${query}*,group_name.ilike.*${query}*)`);
   }
   const rows = await restSelect(`chariot_whatsapp_messages?${parts.join("&")}`);
-  return JSON.stringify({ results: rows, retention: "Only the last 30 days are searchable." });
+  return JSON.stringify({
+    results: rows,
+    retention: "Only the last 30 days are searchable.",
+    extraction: "Extraction is on demand only. To turn one of these messages into a private draft, call extract_whatsapp_listing with that result's id — and only when Kapil asked for it.",
+  });
 }
 
 async function searchRequirements(args: SearchArgs): Promise<string> {
@@ -466,6 +495,8 @@ async function createListing(args: Record<string, unknown>): Promise<string> {
   const table = listingTable(category, transaction);
   if (!table) return noRow(`I don't support ${category}/${transaction} yet.`);
 
+  const rawMessageId = Number(args.raw_message_id);
+  const hasProvenance = Number.isFinite(rawMessageId) && rawMessageId > 0;
   const payload: Record<string, unknown> = {
     ...stubBuilder(table, category),
     asset_type: category,
@@ -477,8 +508,10 @@ async function createListing(args: Record<string, unknown>): Promise<string> {
     summary_title: args.summary_title || name,
     visibility: "internal",
     status: "draft",
-    source: "agent",
+    source: typeof args.source === "string" && args.source.trim() ? args.source.trim() : "agent",
   };
+  if (hasProvenance) payload.raw_message_id = rawMessageId;
+  if (args.ai_extraction && typeof args.ai_extraction === "object") payload.ai_extraction = args.ai_extraction;
   if (table.includes("_commercial_") && args.commercial_use_type) payload.commercial_use_type = String(args.commercial_use_type);
   if (!table.includes("_commercial_") && typeof args.bhk === "number") payload.bhk = args.bhk;
   if (args.configuration_type) payload.configuration_type = String(args.configuration_type);
@@ -498,11 +531,104 @@ async function createListing(args: Record<string, unknown>): Promise<string> {
   if (args.description) payload.broker_notes = [{ note: String(args.description) }];
 
   try {
-    const created = await restPost(table, payload);
+    const created = await insertListingRow(table, payload);
     return JSON.stringify({ ok: true, id: created?.id, name, locality, status: "draft", table, kind: "internal" });
   } catch (error) {
     return JSON.stringify({ error: error instanceof Error ? error.message : "Could not create listing" });
   }
+}
+
+// insertListingRow writes a draft, tolerating a database that has not applied the
+// WhatsApp provenance columns yet. Losing provenance is recoverable; refusing to
+// save Kapil's dictated listing is not.
+async function insertListingRow(table: string, payload: Record<string, unknown>) {
+  try {
+    return await restPost(table, payload);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const missingProvenance = !("raw_message_id" in payload) || !/raw_message_id|ai_extraction|schema cache/i.test(detail);
+    if (missingProvenance) throw error;
+    const withoutProvenance = { ...payload };
+    delete withoutProvenance.raw_message_id;
+    delete withoutProvenance.ai_extraction;
+    return restPost(table, withoutProvenance);
+  }
+}
+
+async function extractWhatsappListing(args: Record<string, unknown>): Promise<string> {
+  const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
+  if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return noRow("Chariot WhatsApp storage is not configured.");
+
+  const rawMessageId = Number(args.raw_message_id);
+  if (!Number.isFinite(rawMessageId) || rawMessageId <= 0) {
+    return noRow("I need the id of the WhatsApp message to extract. Search the messages first and use the id from those results.");
+  }
+
+  const sourceRows = await restSelect(
+    `chariot_whatsapp_messages?select=id,message,message_type,sender,sender_phone,group_name,is_group,message_timestamp&broker_id=eq.${encodeURIComponent(whatsappBrokerId)}&id=eq.${rawMessageId}&limit=1`,
+  );
+  const source = sourceRows[0];
+  if (!source) {
+    return noRow(`WhatsApp message ${rawMessageId} is not in Chariot's raw store. It may be older than the 30-day retention window — search the messages again for a current id.`);
+  }
+
+  const category = String(args.category || "residential");
+  const transaction = String(args.transaction || "sale");
+  const table = listingTable(category, transaction);
+  if (!table) return noRow(`I don't support ${category}/${transaction} listings yet.`);
+
+  const existing = await restSelect(`${table}?select=id,building_name,status&raw_message_id=eq.${rawMessageId}&limit=1`);
+  if (existing.length) {
+    return JSON.stringify({
+      ok: true,
+      already_extracted: true,
+      id: existing[0].id,
+      name: existing[0].building_name,
+      status: existing[0].status,
+      table,
+      raw_message_id: rawMessageId,
+      note: "This WhatsApp message was already extracted. Nothing new was created — show Kapil the existing draft.",
+    });
+  }
+
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (key === "raw_message_id" || value === undefined || value === null || value === "") continue;
+    fields[key] = value;
+  }
+  const sourceText = String(source.message || "").slice(0, 4000);
+  const sourceLabel = [
+    source.is_group ? `group ${source.group_name || "unknown"}` : "direct chat",
+    source.sender || "unknown sender",
+    source.sender_phone ? `(${source.sender_phone})` : "",
+    source.message_timestamp ? `at ${source.message_timestamp}` : "",
+  ].filter(Boolean).join(" · ");
+
+  const extraction = {
+    extracted_at: new Date().toISOString(),
+    extracted_by: SARVAM_MODEL,
+    tool: "extract_whatsapp_listing",
+    source_message_id: rawMessageId,
+    source_label: sourceLabel,
+    source_text: sourceText,
+    source_message_type: String(source.message_type || ""),
+    fields,
+  };
+
+  const description = typeof args.description === "string" && args.description.trim()
+    ? args.description.trim()
+    : `From WhatsApp (${sourceLabel}): ${sourceText}`.slice(0, 1000);
+
+  const created = JSON.parse(await createListing({
+    ...args,
+    description,
+    source: "whatsapp",
+    raw_message_id: rawMessageId,
+    ai_extraction: extraction,
+  })) as Record<string, unknown>;
+  if (created.error) return JSON.stringify(created);
+
+  return JSON.stringify({ ...created, raw_message_id: rawMessageId, source: "whatsapp", extracted_from: sourceLabel, source_text: sourceText, review: "Private draft. Review it in the admin Inventory tab before publishing." });
 }
 
 async function updateListing(args: Record<string, unknown>): Promise<string> {
@@ -608,6 +734,8 @@ async function runTool(name: string, rawArgs: string): Promise<string> {
       return matchProperties(args as MatchArgs);
     case "search_whatsapp_messages":
       return searchWhatsappMessages(args as { query?: string; limit?: number });
+    case "extract_whatsapp_listing":
+      return extractWhatsappListing(args);
     case "search_requirements":
       return searchRequirements(args as SearchArgs);
     case "search_leads":
@@ -669,9 +797,13 @@ function asksForPreviousSource(text: string) {
 }
 
 function forcedToolFor(text: string): string | undefined {
-  if (/\b(enquir|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
-  if (/\b(whatsapp|self[- ]chat|raw message|raw listing|ingest|ingested|message archive|group messages?|from (?:a|the) whatsapp group)\b/i.test(text)) return "search_whatsapp_messages";
+  if (/\b(enquir\w*|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
+  if (/\b(extract|turn (this|that|it) into a listing|convert (this|that|it) to a listing|save (this|that|it) as a listing|save (this|that|it) from whatsapp)\b/i.test(text)) return "extract_whatsapp_listing";
+  if (/\b(whatsapp|self[- ]chat|raw messages?|raw listing|ingest|ingested|message archive|group messages?|from (?:a|the) whatsapp group)\b/i.test(text)) return "search_whatsapp_messages";
   if (/\b(match|matched|fit|suitable|shortlist|find\b.*\b(properties|listings)\b.*\b(buyer|tenant)|properties?\s+for\s+(a\s+)?(buyer|tenant)|listings?\s+for\s+(a\s+)?(buyer|tenant))\b/i.test(text)) return "match_properties";
+  // "find a 2 BHK for a Bandra buyer" is a matching request even without the
+  // word "properties", unless the wording is really a requirements lookup.
+  if (/\b(find|show|search|shortlist)\w*\b.{0,40}\bfor\b.{0,25}\b(buyer|tenant)\b/i.test(text) && !/\b(requirement|looking for|anyone|seeking|client wants)\b/i.test(text)) return "match_properties";
   if (/\b(requirement|looking for|buyer|tenant|client wants|seeking)\b/i.test(text)) return "search_requirements";
   if (/\b(save|store|add|new property|new listing)\b/i.test(text)) return "create_listing";
   if (/\b(inventory|listing|property|properties|available|bhk|flat|apartment|office|villa|summari[sz]e)\b/i.test(text)) return "search_listings";

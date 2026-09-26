@@ -1145,6 +1145,11 @@ func (sm *SessionManager) syncGroups(s *BrokerSession) bool {
 	}
 	directory := make([]map[string]interface{}, 0, len(groups))
 	for _, group := range groups {
+		// Cache the subject so raw rows carry a searchable group name instead of
+		// only the @g.us JID.
+		if group.Name != "" {
+			groupNameCache.Store(group.JID.String(), group.Name)
+		}
 		participants := make([]map[string]interface{}, 0, len(group.Participants))
 		for _, participant := range group.Participants {
 			participants = append(participants, map[string]interface{}{
@@ -1228,8 +1233,18 @@ func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
 	// Some connected WhatsApp accounts are private control planes rather than
 	// market-ingestion sources. For those brokers, only the owner's self-chat
 	// may reach the agent. Drop every other message before logging, media
-	// capture, counters, webhooks, or raw_messages persistence.
+	// capture, counters, webhooks, or raw_messages persistence — unless the
+	// broker explicitly opted into group raw storage, which persists group
+	// messages only. Extraction stays on demand, so nothing is derived from
+	// them until Kapil asks the agent for it.
 	if selfChatOnlyBroker(s.brokerID) && !isOwnWhatsAppJID(s, info.Chat) {
+		if info.IsGroup && groupRawIngestAllowed(s.brokerID) {
+			if _, err := sm.insertRawMessage(s.brokerID, buildGroupRawPayload(s.brokerID, evt, info)); err != nil {
+				log.Printf("[broker %s] group raw message insert failed: %v", s.brokerID, err)
+			} else {
+				log.Printf("[broker %s] group message stored in raw store chat=%s id=%s", s.brokerID, info.Chat.String(), info.ID)
+			}
+		}
 		return
 	}
 	if info.IsGroup {
@@ -3372,6 +3387,28 @@ func selfChatOnlyBroker(brokerID string) bool {
 		return false
 	}
 	for _, configured := range strings.Split(os.Getenv("PROPAI_SELF_CHAT_ONLY_BROKERS"), ",") {
+		if strings.TrimSpace(configured) == brokerID {
+			return true
+		}
+	}
+	return false
+}
+
+// groupRawIngestAllowed reports whether group messages may be written to the raw
+// store for this broker. Brokers that are not self-chat-only already persist
+// every message. A self-chat-only broker opts in per broker id, for example:
+// CHARIOT_WHATSAPP_INGEST_GROUPS=chariot-realty
+// Group traffic still never reaches the agent or the webhook, and extraction is
+// only ever triggered on demand, so this cannot publish or forward anything.
+func groupRawIngestAllowed(brokerID string) bool {
+	brokerID = strings.TrimSpace(brokerID)
+	if brokerID == "" {
+		return false
+	}
+	if !selfChatOnlyBroker(brokerID) {
+		return true
+	}
+	for _, configured := range strings.Split(os.Getenv("CHARIOT_WHATSAPP_INGEST_GROUPS"), ",") {
 		if strings.TrimSpace(configured) == brokerID {
 			return true
 		}
