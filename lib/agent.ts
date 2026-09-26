@@ -420,6 +420,10 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
     "select=id,message,message_type,sender,sender_phone,group_name,is_group,message_timestamp,created_at",
     `broker_id=eq.${encodeURIComponent(whatsappBrokerId)}`,
     `created_at=gte.${encodeURIComponent(cutoff)}`,
+    // The device emits plenty of protocol/media-sync events with no text. They
+    // are kept in the raw store for the record but would otherwise crowd out the
+    // actual messages Kapil is asking about.
+    "message=neq.",
     "order=message_timestamp.desc",
     `limit=${limit}`,
   ];
