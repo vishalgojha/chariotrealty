@@ -29,5 +29,5 @@ export async function GET(request: NextRequest) {
     count: properties.length,
     filters: { category: category || null, locality: locality || null, configuration: configuration || null, minCarpet, maxCarpet: maxCarpet === Number.MAX_SAFE_INTEGER ? null : maxCarpet },
     data: properties,
-  }, { headers: { "Cache-Control": "public, max-age=60, s-maxage=300" } });
+  }, { headers: { "Cache-Control": "no-store" } });
 }

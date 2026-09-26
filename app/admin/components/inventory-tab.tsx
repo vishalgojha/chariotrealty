@@ -171,11 +171,15 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   }
 
   async function setStatus(id: string, status: string) {
-    const response = await api.patch(`/api/inventory/${id}`, { status });
-    const payload = await readJson(response);
-    if (!response.ok) return setError(payload.error || "Could not update property");
-    setProperties((items) => items.map((item) => (item.id === id ? { ...item, status } : item)));
-    notify(status === "published" ? "Published to the website" : "Property unpublished");
+    try {
+      const response = await api.patch(`/api/inventory/${id}`, { status });
+      const payload = await readJson(response);
+      if (!response.ok) return setError(payload.error || "Could not update property");
+      setProperties((items) => items.map((item) => (item.id === id ? { ...item, status } : item)));
+      notify(status === "published" ? "Published to the website" : "Property unpublished");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update property");
+    }
   }
 
   function setCustomValue(key: string, type: CmsFieldType, raw: string) {
