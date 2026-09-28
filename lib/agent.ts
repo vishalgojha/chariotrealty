@@ -832,6 +832,7 @@ export async function askAgent(text: string, history: AgentMessage[] = []): Prom
     }
   }
 
+  let emptyRetries = 0;
   for (let round = 0; round < 4; round++) {
     const completion = await callSarvam(messages, round === 0 ? forcedTool : undefined);
     const choice = completion.choices?.[0];
@@ -855,7 +856,18 @@ export async function askAgent(text: string, history: AgentMessage[] = []): Prom
     }
 
     const reply = (message.content || "").trim();
-    if (!reply) throw new Error("The assistant returned an empty answer");
+    if (!reply) {
+      // The model occasionally finishes a turn with no text after a tool call.
+      // Nudge it once to summarise what the tools returned instead of failing
+      // the user's request with a 502.
+      if (emptyRetries < 2) {
+        emptyRetries += 1;
+        messages.push({ role: "assistant", content: null, tool_calls: message.tool_calls });
+        messages.push({ role: "user", content: "Answer the original question now in plain text, using the tool results above. Do not call another tool." });
+        continue;
+      }
+      throw new Error("The assistant returned an empty answer");
+    }
     return { reply };
   }
 
