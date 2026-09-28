@@ -783,6 +783,104 @@ async function callSarvam(messages: SarvamMessage[], toolChoice?: string): Promi
   return body;
 }
 
+type AgentHooks = {
+  onReasoning?: (text: string) => void;
+  onDelta?: (text: string) => void;
+  onReset?: () => void;
+};
+
+// sarvam-105b spends most of a turn in reasoning_content before it writes any
+// visible answer, so a single non-streamed request can sit silent for a minute.
+// Streaming both phases lets the UI show progress immediately. Tool-call
+// fragments arrive in delta.tool_calls and must be stitched back together by
+// index, exactly as the non-streamed response shape expects.
+async function callSarvamStream(messages: SarvamMessage[], toolChoice: string | undefined, hooks: AgentHooks): Promise<SarvamResponse> {
+  const { apiKey } = config();
+  if (!apiKey) throw new Error("Sarvam API key is not configured");
+
+  const response = await fetch(SARVAM_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-subscription-key": apiKey,
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: SARVAM_MODEL,
+      messages,
+      tools: TOOLS,
+      ...(toolChoice ? { tool_choice: { type: "function", function: { name: toolChoice } } } : {}),
+      temperature: 0.4,
+      stream: true,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok || !response.body) {
+    const detail = await response.json().catch(() => ({}) as { error?: { message?: string } });
+    throw new Error(detail.error?.message || `Sarvam returned ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let finishReason: string | undefined;
+  const toolCalls: SarvamToolCall[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+
+      let chunk: {
+        choices?: Array<{ delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> }; finish_reason?: string | null }>;
+      };
+      try {
+        chunk = JSON.parse(payload);
+      } catch {
+        continue;
+      }
+
+      const choice = chunk.choices?.[0];
+      if (!choice) continue;
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+      const delta = choice.delta || {};
+
+      if (delta.reasoning_content) hooks.onReasoning?.(delta.reasoning_content);
+      if (delta.content) {
+        content += delta.content;
+        hooks.onDelta?.(delta.content);
+      }
+
+      for (const call of delta.tool_calls || []) {
+        const index = call.index ?? toolCalls.length;
+        if (!toolCalls[index]) toolCalls[index] = { id: "", type: "function", function: { name: "", arguments: "" } };
+        const target = toolCalls[index];
+        if (call.id) target.id = call.id;
+        if (call.function?.name) target.function.name += call.function.name;
+        if (call.function?.arguments) target.function.arguments += call.function.arguments;
+      }
+    }
+  }
+
+  const calls = toolCalls.filter(Boolean);
+  return {
+    choices: [{
+      message: { content: content || null, tool_calls: calls.length ? calls : undefined },
+      finish_reason: finishReason,
+    }],
+  };
+}
+
 function buildMessages(text: string, history: AgentMessage[]): SarvamMessage[] {
   const recent = history.slice(-8);
   return [
@@ -814,7 +912,7 @@ function forcedToolFor(text: string): string | undefined {
   return undefined;
 }
 
-export async function askAgent(text: string, history: AgentMessage[] = []): Promise<{ reply: string }> {
+async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHooks): Promise<{ reply: string }> {
   const messages = [{ role: "system" as const, content: BUSINESS_RULES }, ...buildMessages(text, history)];
   const forcedTool = forcedToolFor(text);
   if (asksForPreviousSource(text) && history.some((message) => message.role === "agent")) {
@@ -834,7 +932,9 @@ export async function askAgent(text: string, history: AgentMessage[] = []): Prom
 
   let emptyRetries = 0;
   for (let round = 0; round < 4; round++) {
-    const completion = await callSarvam(messages, round === 0 ? forcedTool : undefined);
+    const completion = hooks
+      ? await callSarvamStream(messages, round === 0 ? forcedTool : undefined, hooks)
+      : await callSarvam(messages, round === 0 ? forcedTool : undefined);
     const choice = completion.choices?.[0];
     if (!choice) {
       const detail = completion.error?.message || "No answer from the assistant";
@@ -843,6 +943,9 @@ export async function askAgent(text: string, history: AgentMessage[] = []): Prom
     const message = choice.message;
 
     if (message.tool_calls && message.tool_calls.length > 0) {
+      // Any text streamed during this round is a preamble the model replaced
+      // with tool calls, so tell the client to drop the partial answer.
+      hooks?.onReset?.();
       messages.push({ role: "assistant", content: null, tool_calls: message.tool_calls });
       for (const call of message.tool_calls) {
         try {
@@ -872,4 +975,12 @@ export async function askAgent(text: string, history: AgentMessage[] = []): Prom
   }
 
   throw new Error("The assistant took too long to answer");
+}
+
+export async function askAgent(text: string, history: AgentMessage[] = []): Promise<{ reply: string }> {
+  return runAgent(text, history);
+}
+
+export async function askAgentStream(text: string, history: AgentMessage[] = [], hooks: AgentHooks = {}): Promise<{ reply: string }> {
+  return runAgent(text, history, hooks);
 }

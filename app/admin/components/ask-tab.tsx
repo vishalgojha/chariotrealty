@@ -79,6 +79,8 @@ export function AskTab({ api }: { api: AdminApi }) {
   const [messages, setMessages] = useState<Message[]>([OPENING]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [streamed, setStreamed] = useState("");
+  const [reasoning, setReasoning] = useState("");
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState("");
@@ -162,21 +164,71 @@ export function AskTab({ api }: { api: AdminApi }) {
     setError("");
     setMessages(nextMessages);
     setBusy(true);
+    setStreamed("");
+    setReasoning("");
     try {
       const history = nextMessages.slice(0, -1);
-      const response = await api.post("/api/agent/chat", { text, history });
-      const payload = await readJson(response);
-      if (!response.ok) throw new Error(payload.error || "The assistant could not answer");
-      const reply = String(payload.reply || "The assistant returned no answer.");
-      setMessages((items) => [...items, { role: "agent", text: reply }]);
+      const response = await api.post("/api/agent/chat", { text, history, stream: true });
+
+      if (!response.ok || !response.body) {
+        const payload = await readJson(response);
+        throw new Error(payload.error || "The assistant could not answer");
+      }
+
+      // Streamed answer: text lands in `streamed` as it arrives so the reply
+      // fills in progressively instead of appearing all at once after a minute.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let reply = "";
+      let failure = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() || "";
+
+        for (const frame of frames) {
+          const line = frame.split("\n").find((item) => item.startsWith("data:"));
+          if (!line) continue;
+          let event: { type?: string; text?: string; reply?: string; message?: string };
+          try {
+            event = JSON.parse(line.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (event.type === "delta" && event.text) {
+            reply += event.text;
+            setStreamed(reply);
+          } else if (event.type === "reasoning" && event.text) {
+            setReasoning((current) => (current + event.text).slice(-160));
+          } else if (event.type === "reset") {
+            reply = "";
+            setStreamed("");
+          } else if (event.type === "done") {
+            reply = event.reply || reply;
+          } else if (event.type === "error") {
+            failure = event.message || "The assistant could not answer";
+          }
+        }
+      }
+
+      if (failure) throw new Error(failure);
+      const finalReply = reply.trim() || "The assistant returned no answer.";
+      setMessages((items) => [...items, { role: "agent", text: finalReply }]);
+      setStreamed("");
     } catch (e) {
       const message = e instanceof Error ? e.message : "The assistant could not answer";
       const friendly = message.toLowerCase().includes("api key is not configured") || message.toLowerCase().includes("invalid_api_key") || message.toLowerCase().includes("unauthorized")
         ? "The assistant isn't connected to the AI provider yet. Let an admin know the AI key needs to be added."
         : message;
       setMessages((items) => [...items, { role: "agent", text: `I hit a snag: ${friendly}. Try asking again in a moment.` }]);
+      setStreamed("");
     } finally {
       setBusy(false);
+      setReasoning("");
     }
   }
 
@@ -234,7 +286,14 @@ export function AskTab({ api }: { api: AdminApi }) {
           {busy && (
             <div className="agent-msg agent">
               <span className="agent-msg-label">Assistant</span>
-               <p className="agent-thinking"><span />Thinking…</p>
+              {streamed ? (
+                <MarkdownMessage text={streamed} />
+              ) : (
+                <p className="agent-thinking">
+                  <span />
+                  {reasoning ? "Checking your data…" : "Thinking…"}
+                </p>
+              )}
             </div>
           )}
           {!busy && (
