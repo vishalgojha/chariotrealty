@@ -13,7 +13,13 @@ export async function uniqueInventorySlug(url: string, key: string, name: string
     headers: { apikey: key, Authorization: `Bearer ${key}` },
     cache: "no-store",
   });
-  const rows = response.ok ? await response.json() as Array<{ id: string; slug: string }> : [];
+  // A failed uniqueness check is not the same as "no collisions". Treating an
+  // error as an empty result hands back the base slug, which is how two
+  // different properties end up sharing a URL and silently overwriting each
+  // other on the public site. Fail loudly and let the save be retried.
+  if (!response.ok) throw new Error(`Could not check slug uniqueness: HTTP ${response.status} ${response.statusText}`);
+  const rows = await response.json() as Array<{ id: string; slug: string }>;
+  if (!Array.isArray(rows)) throw new Error("Could not check slug uniqueness: expected an array of existing slugs");
   const used = new Set(rows.filter((row) => row.id !== excludeId).map((row) => row.slug));
   if (!used.has(base)) return base;
   let suffix = 2;
