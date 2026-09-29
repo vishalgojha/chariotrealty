@@ -1072,9 +1072,19 @@ function asksForPreviousSource(text: string) {
   return /\b(where did (that|this|those) come from|where is (that|this) from|what(?:'s| is) the source|how did you get (that|this)|which database)\b/i.test(text);
 }
 
+const EXTRACT_INTENT = /\b(extract|turn\b[^.]{0,40}?\binto a listing|convert\b[^.]{0,40}?\bto a listing|save\b[^.]{0,40}?\bas a listing|save\b[^.]{0,40}?\bfrom whatsapp)\b/i;
+
+// The id of the raw message Kapil named, if he named one.
+function explicitMessageId(text: string): number | undefined {
+  const match = text.match(/\b(?:id|message|msg)\s*#?\s*(\d{1,12})\b/i);
+  if (!match) return undefined;
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : undefined;
+}
+
 function forcedToolFor(text: string): string | undefined {
   if (/\b(enquir\w*|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
-  if (/\b(extract|turn (this|that|it) into a listing|convert (this|that|it) to a listing|save (this|that|it) as a listing|save (this|that|it) from whatsapp)\b/i.test(text)) {
+  if (EXTRACT_INTENT.test(text)) {
     return "extract_whatsapp_listing";
   }
   if (/\b(whatsapp|self[- ]chat|raw messages?|raw listing|ingest|ingested|message archive|group messages?|from (?:a|the) whatsapp group)\b/i.test(text)) return "search_whatsapp_messages";
@@ -1176,7 +1186,30 @@ function toToolCalls(parsed: unknown): SarvamToolCall[] {
 
 async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHooks): Promise<{ reply: string }> {
   const messages = [{ role: "system" as const, content: BUSINESS_RULES }, ...buildMessages(text, history)];
-  const forcedTool = forcedToolFor(text);
+  let forcedTool = forcedToolFor(text);
+
+  // A request that names a raw message is extracted here rather than left to the
+  // model. tool_choice is only a hint and sarvam-105b regularly substitutes a
+  // different call, so asking it to save a message would sometimes quietly do
+  // nothing. The extraction reads the message itself and writes a private draft,
+  // so the model's job here is only to describe what happened.
+  const namedMessage = EXTRACT_INTENT.test(text) ? explicitMessageId(text) : undefined;
+  if (namedMessage) {
+    let outcome: string;
+    try {
+      outcome = await extractWhatsappListing({ raw_message_id: namedMessage });
+    } catch (error) {
+      outcome = JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "Extraction failed" });
+    }
+    forcedTool = undefined;
+    messages.push({
+      role: "user",
+      content:
+        `The extraction for WhatsApp message ${namedMessage} has already been carried out. Result: ${outcome}\n\n` +
+        `Do not call any tool. In one or two short sentences tell Kapil what was saved, or why nothing was saved, ` +
+        `and where it came from. A saved listing is a private internal draft, never live on the website.`,
+    });
+  }
   if (asksForPreviousSource(text) && history.some((message) => message.role === "agent")) {
     try {
       const currentInventory = await searchListings({ limit: 10 });
