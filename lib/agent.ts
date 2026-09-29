@@ -998,7 +998,15 @@ function asksForPreviousSource(text: string) {
 
 function forcedToolFor(text: string): string | undefined {
   if (/\b(enquir\w*|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
-  if (/\b(extract|turn (this|that|it) into a listing|convert (this|that|it) to a listing|save (this|that|it) as a listing|save (this|that|it) from whatsapp)\b/i.test(text)) return "extract_whatsapp_listing";
+  if (/\b(extract|turn (this|that|it) into a listing|convert (this|that|it) to a listing|save (this|that|it) as a listing|save (this|that|it) from whatsapp)\b/i.test(text)) {
+    // Kapil naming a specific raw message has to read that message before
+    // anything can be saved from it. Forcing the extract straight away made the
+    // model fill in the building and area without ever seeing the text, and it
+    // invented a property to match. Only force the extract when there is no
+    // specific message to go and read.
+    if (/\b(?:id|message|msg)\s*#?\s*\d+\b/i.test(text)) return "search_whatsapp_messages";
+    return "extract_whatsapp_listing";
+  }
   if (/\b(whatsapp|self[- ]chat|raw messages?|raw listing|ingest|ingested|message archive|group messages?|from (?:a|the) whatsapp group)\b/i.test(text)) return "search_whatsapp_messages";
   if (/\b(match|matched|fit|suitable|shortlist|find\b.*\b(properties|listings)\b.*\b(buyer|tenant)|properties?\s+for\s+(a\s+)?(buyer|tenant)|listings?\s+for\s+(a\s+)?(buyer|tenant))\b/i.test(text)) return "match_properties";
   // "find a 2 BHK for a Bandra buyer" is a matching request even without the
