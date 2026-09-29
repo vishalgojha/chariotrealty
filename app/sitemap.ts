@@ -2,6 +2,10 @@ import type { MetadataRoute } from "next";
 import { canonical, mumbaiNeighborhoodSlugs } from "@/lib/seo";
 import { listPublishedProperties } from "@/lib/inventory";
 
+// Built per request: the build container has no database access, so a
+// prerendered sitemap would either advertise the seed properties or list none.
+export const dynamic = "force-dynamic";
+
 const d = new Date();
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

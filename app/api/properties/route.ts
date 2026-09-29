@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mumbaiProperties, normalizeSearch, type PropertyCategory } from "@/lib/mumbai";
-import { listPublishedProperties } from "@/lib/inventory";
+import { readInventory } from "@/lib/inventory";
 
 const supportedCategories: PropertyCategory[] = ["residential", "commercial", "under-construction"];
 const categories = new Set<PropertyCategory>(supportedCategories);
@@ -17,7 +17,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unsupported category", supported: supportedCategories }, { status: 400 });
   }
 
-  const properties = (await listPublishedProperties()).filter((property) => {
+  const { properties: all, degraded, reason } = await readInventory();
+  if (degraded) {
+    return NextResponse.json(
+      { error: "Listings are temporarily unavailable. Please try again shortly.", degraded: true, detail: reason },
+      { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "120" } },
+    );
+  }
+
+  const properties = all.filter((property) => {
     const localityMatch = !locality || [property.locality, property.microMarket, property.location, property.zone].some((field) => normalizeSearch(field).includes(locality));
     const configMatch = !configuration || normalizeSearch(property.configuration ?? "").includes(configuration);
     return (!category || property.category === category) && localityMatch && configMatch && property.carpetAreaSqft >= minCarpet && property.carpetAreaSqft <= maxCarpet;

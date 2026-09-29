@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { canonical, neighborhoodJsonLd, faqJsonLd, listingJsonLd } from "@/lib/seo";
-import { neighborhoods, neighborhoodIndex } from "@/lib/neighborhoods";
+import { neighborhoods } from "@/lib/neighborhoods";
 import { mumbaiNeighborhoodSlugs } from "@/lib/seo";
-import { listPublishedProperties } from "@/lib/inventory";
+import { readInventory } from "@/lib/inventory";
 
-export const dynamic = "force-static";
-
-export function generateStaticParams() {
-  return neighborhoodIndex.map(({ slug }) => ({ slug }));
-}
+// Rendered per request for the same reason as the property pages: the build
+// container cannot read the database, so a prerender would freeze an empty or
+// degraded inventory into the HTML every visitor receives.
+export const dynamic = "force-dynamic";
 
 type PageProps = { params: { slug: string } };
 
@@ -34,7 +33,8 @@ export default async function NeighborhoodPage({ params }: PageProps) {
   const n = neighborhoods.find((h) => h.slug === params.slug);
   if (!n) notFound();
   const site = canonical();
-  const listings = (await listPublishedProperties()).filter((p) => n.listingFilters({ micro_market: p.microMarket ?? "", locality: p.locality ?? "", zone: p.zone ?? "Western Suburbs", location: p.location ?? p.locality }));
+  const { properties: all, degraded } = await readInventory();
+  const listings = degraded ? [] : all.filter((p) => n.listingFilters({ micro_market: p.microMarket ?? "", locality: p.locality ?? "", zone: p.zone ?? "Western Suburbs", location: p.location ?? p.locality }));
   const faqId = `${site}/neighborhoods/${n.slug}#faq`;
   const jsonLd = [
     ...neighborhoodJsonLd(n),
@@ -109,7 +109,11 @@ export default async function NeighborhoodPage({ params }: PageProps) {
               ))}
             </div>
           ) : (
-            <p className="empty">No verified {n.name} listings live right now — message Kapil on WhatsApp for the current shortlist.</p>
+            <p className="empty">
+              {degraded
+                ? "We could not load live inventory just now, so this is not a full list — message Kapil on WhatsApp for the current shortlist."
+                : `No verified ${n.name} listings live right now — message Kapil on WhatsApp for the current shortlist.`}
+            </p>
           )}
           <a className="btn-primary" href={`https://wa.me/919773757759?text=${encodeURIComponent(`Hi Kapil, looking for options in ${n.name}.`)}`}>
             Ask about {n.name}

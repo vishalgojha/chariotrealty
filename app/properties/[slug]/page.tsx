@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { canonical, listingJsonLd } from "@/lib/seo";
-import { listPublishedProperties } from "@/lib/inventory";
+import { readInventory } from "@/lib/inventory";
 
-export const dynamic = "force-static";
+// These pages must render per request. The build container has no database
+// credentials, so a prerender would bake in either seed data or a permanent
+// "unavailable" notice. Reading live at request time is what keeps the site
+// honest about what is actually listed.
+export const dynamic = "force-dynamic";
 
 const WA_NUMBER = "919773757759";
 
@@ -11,13 +15,29 @@ function waLink(message: string): string {
   return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(message)}`;
 }
 
-export async function generateStaticParams() {
-  const all = await listPublishedProperties();
-  return all.map((p) => ({ slug: p.slug }));
+// A database outage must not be reported as "this property does not exist".
+// Returning notFound() here would tell search engines to drop every real
+// listing during an incident, so the page says the site is unavailable instead.
+function unavailable() {
+  return (
+    <main className="page">
+      <section className="section-head page-head">
+        <p className="kicker">Temporarily unavailable</p>
+        <h1>We could not load our listings right now</h1>
+        <p className="loc">Please refresh in a moment, or contact us directly and we will help straight away.</p>
+        <p className="loc"><a href={`https://wa.me/${WA_NUMBER}`}>Message us on WhatsApp</a></p>
+      </section>
+    </main>
+  );
 }
 
+// No generateStaticParams on purpose. The build container has no database
+// credentials, so enumerating slugs here would either bake in the seed data or
+// silently prerender nothing, depending on the day. Slugs come from the live
+// inventory at request time instead.
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const all = await listPublishedProperties();
+  const { properties: all, degraded } = await readInventory();
+  if (degraded) return { title: `Listings temporarily unavailable | Chariot Realty`, robots: { index: false, follow: true } };
   const p = all.find((x) => x.slug === params.slug);
   if (!p) return {};
   const site = canonical();
@@ -29,7 +49,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function PropertyDetailPage({ params }: { params: { slug: string } }) {
-  const all = await listPublishedProperties();
+  const { properties: all, degraded } = await readInventory();
+  if (degraded) return unavailable();
   const p = all.find((x) => x.slug === params.slug);
   if (!p) notFound();
   const site = canonical();
