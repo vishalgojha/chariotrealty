@@ -949,10 +949,6 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
     }
   }
 
-  // Note: a general WhatsApp search must stay in the tool role. Injecting raw
-  // broker messages into a system message trips the provider's content policy
-  // and the entire request is rejected.
-
   let emptyRetries = 0;
   for (let round = 0; round < 4; round++) {
     const completion = hooks
@@ -971,14 +967,8 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
       hooks?.onReset?.();
       messages.push({ role: "assistant", content: null, tool_calls: message.tool_calls });
       for (const call of message.tool_calls) {
-        // For a general WhatsApp question, pin the first search to the whole
-        // retained window. Otherwise the model picks a keyword, and the answer
-        // depends on which word it happened to choose.
-        const args = round === 0 && call.function.name === "search_whatsapp_messages"
-          ? JSON.stringify({ limit: 10 })
-          : call.function.arguments || "{}";
         try {
-          const result = await runTool(call.function.name, args);
+          const result = await runTool(call.function.name, call.function.arguments || "{}");
           messages.push({ role: "tool", content: result, tool_call_id: call.id });
         } catch (error) {
           messages.push({ role: "tool", content: JSON.stringify({ error: error instanceof Error ? error.message : "Tool failed" }), tool_call_id: call.id });
