@@ -610,6 +610,35 @@ async function insertListingRow(table: string, payload: Record<string, unknown>)
   }
 }
 
+// The model fills in required tool arguments even when it has not actually read
+// the message, and then invents a plausible property to match. Everything the
+// tool writes must be traceable to the stored message text, so facts are checked
+// against that text before anything is saved.
+function significantTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((token) => token.length >= 3);
+}
+
+function isGroundedIn(value: string, sourceText: string): boolean {
+  const tokens = significantTokens(value);
+  if (tokens.length === 0) return true;
+  const source = ` ${sourceText.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  return tokens.every((token) => source.includes(` ${token} `) || source.includes(`${token}`));
+}
+
+// Sale vs rent is decided by the message, not by the model, so a rent listing
+// can never be filed into the sale table.
+function inferTransaction(sourceText: string): "rent" | "sale" {
+  return /\b(lease|leased|on rent|rented|monthly rent|per month|rent pm)\b/i.test(sourceText) ? "rent" : "sale";
+}
+
+function inferCategory(sourceText: string): "residential" | "commercial" {
+  return /\b(office|commercial|shop|showroom|warehouse|godown|industrial|retail)\b/i.test(sourceText) ? "commercial" : "residential";
+}
+
 async function extractWhatsappListing(args: Record<string, unknown>): Promise<string> {
   const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
   if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return noRow("Chariot WhatsApp storage is not configured.");
@@ -627,8 +656,10 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
     return noRow(`WhatsApp message ${rawMessageId} is not in Chariot's raw store. It may be older than the 30-day retention window — search the messages again for a current id.`);
   }
 
-  const category = String(args.category || "residential");
-  const transaction = String(args.transaction || "sale");
+  const sourceText = String(source.message || "").slice(0, 4000);
+
+  const category = inferCategory(sourceText);
+  const transaction = inferTransaction(sourceText);
   const table = listingTable(category, transaction);
   if (!table) return noRow(`I don't support ${category}/${transaction} listings yet.`);
 
@@ -646,12 +677,28 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
     });
   }
 
+  // Refuse anything the message does not actually say. Better to write no draft
+  // than a fabricated one, because a wrong draft is indistinguishable from a
+  // real lead once it is in the table.
+  const ungrounded: string[] = [];
+  for (const key of ["name", "locality", "summary_title", "landmark_name", "street_name"]) {
+    const value = args[key];
+    if (typeof value !== "string" || !value.trim()) continue;
+    if (!isGroundedIn(value, sourceText)) ungrounded.push(`${key}="${value}"`);
+  }
+  if (ungrounded.length) {
+    return noRow(
+      `I did not save this because the details do not match WhatsApp message ${rawMessageId}: ${ungrounded.join(", ")}. ` +
+        `That message actually says: "${sourceText.replace(/\s+/g, " ").slice(0, 400)}". ` +
+        `Call extract_whatsapp_listing again using only the building, area and configuration named in that message.`,
+    );
+  }
+
   const fields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
     if (key === "raw_message_id" || value === undefined || value === null || value === "") continue;
     fields[key] = value;
   }
-  const sourceText = String(source.message || "").slice(0, 4000);
   const sourceLabel = [
     source.is_group ? `group ${source.group_name || "unknown"}` : "direct chat",
     source.sender || "unknown sender",
