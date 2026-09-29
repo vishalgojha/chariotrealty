@@ -187,7 +187,7 @@ const TOOLS = [
           raw_message_id: { type: "number", description: "id of the raw WhatsApp message from search_whatsapp_messages. Required." },
           ...LISTING_PROPERTIES,
         },
-        required: ["raw_message_id", "name", "locality"],
+        required: ["raw_message_id"],
       },
     },
   },
@@ -678,6 +678,33 @@ function deriveFieldsFromText(sourceText: string): Record<string, unknown> {
   return derived;
 }
 
+// The building and the area are read from the message when the model does not
+// supply them. The tool fetches the message by id itself, so extraction has to
+// work from the id alone rather than depend on the model restating the message.
+function deriveIdentityFromText(sourceText: string): { name?: string; locality?: string } {
+  const identity: { name?: string; locality?: string } = {};
+  const clean = (value: string) => value.replace(/[*_`#]/g, "").replace(/\s+/g, " ").trim();
+
+  const labelled = sourceText.match(/(?:building|property|tower|project)\s*(?:name)?\s*[:\-]\s*([^\n]+)/i);
+  if (labelled) {
+    const parts = labelled[1].split(",").map(clean).filter(Boolean);
+    if (parts[0]) identity.name = parts[0];
+    if (parts[1]) identity.locality = parts[1];
+  }
+  if (!identity.locality) {
+    const area = sourceText.match(/\b(?:in|at)\s+([A-Za-z][A-Za-z.]*(?:\s+[A-Za-z][A-Za-z.]*){0,2})/);
+    if (area) identity.locality = clean(area[1]);
+  }
+  if (!identity.name) {
+    const heading = clean(sourceText.split("\n").find(Boolean) || "")
+      .replace(/[^\w\s,.-]/g, "")
+      .split(/\s+(?:on\s+lease|for\s+(?:sale|rent)|available)\b/i)[0]
+      .trim();
+    if (heading) identity.name = heading.slice(0, 80);
+  }
+  return identity;
+}
+
 async function extractWhatsappListing(args: Record<string, unknown>): Promise<string> {
   const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
   if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return noRow("Chariot WhatsApp storage is not configured.");
@@ -716,28 +743,32 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
     });
   }
 
-  // Refuse anything the message does not actually say. Better to write no draft
-  // than a fabricated one, because a wrong draft is indistinguishable from a
-  // real lead once it is in the table.
+  // Only what the message actually says is allowed through. Free-text identity
+  // fields the model invented are dropped rather than saved, because a wrong
+  // draft is indistinguishable from a real lead once it is in the table.
   const ungrounded: string[] = [];
-  for (const key of ["name", "locality", "summary_title", "landmark_name", "street_name"]) {
-    const value = args[key];
-    if (typeof value !== "string" || !value.trim()) continue;
-    if (!isGroundedIn(value, sourceText)) ungrounded.push(`${key}="${value}"`);
+  const sanitised: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (key === "raw_message_id" || value === undefined || value === null || value === "") continue;
+    if (IDENTITY_TEXT_FIELDS.has(key) && typeof value === "string" && !isGroundedIn(value, sourceText)) {
+      ungrounded.push(`${key}="${value}"`);
+      continue;
+    }
+    sanitised[key] = value;
   }
-  if (ungrounded.length) {
+
+  const identity = deriveIdentityFromText(sourceText);
+  const resolvedName = sanitised.name || identity.name;
+  const resolvedLocality = sanitised.locality || identity.locality;
+  if (!resolvedName || !resolvedLocality) {
     return noRow(
-      `I did not save this because the details do not match WhatsApp message ${rawMessageId}: ${ungrounded.join(", ")}. ` +
-        `That message actually says: "${sourceText.replace(/\s+/g, " ").slice(0, 400)}". ` +
-        `Call extract_whatsapp_listing again using only the building, area and configuration named in that message.`,
+      `I could not work out the building name or the area from WhatsApp message ${rawMessageId}, so I did not save anything. ` +
+        `The message says: "${sourceText.replace(/\s+/g, " ").slice(0, 400)}". ` +
+        `Call extract_whatsapp_listing again with the building name and area exactly as the message states them.`,
     );
   }
 
-  const fields: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(args)) {
-    if (key === "raw_message_id" || value === undefined || value === null || value === "") continue;
-    fields[key] = value;
-  }
+  const fields: Record<string, unknown> = { ...sanitised };
   const sourceLabel = [
     source.is_group ? `group ${source.group_name || "unknown"}` : "direct chat",
     source.sender || "unknown sender",
@@ -753,6 +784,7 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
     source_label: sourceLabel,
     source_text: sourceText,
     source_message_type: String(source.message_type || ""),
+    discarded_ungrounded_fields: ungrounded,
     fields,
   };
 
@@ -761,8 +793,10 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
     : `From WhatsApp (${sourceLabel}): ${sourceText}`.slice(0, 1000);
 
   const created = JSON.parse(await createListing({
-    ...args,
+    ...sanitised,
     ...deriveFieldsFromText(sourceText),
+    name: resolvedName,
+    locality: resolvedLocality,
     category,
     transaction,
     description,
@@ -1041,12 +1075,6 @@ function asksForPreviousSource(text: string) {
 function forcedToolFor(text: string): string | undefined {
   if (/\b(enquir\w*|lead|contacted|asked about|who.*website)\b/i.test(text)) return "search_leads";
   if (/\b(extract|turn (this|that|it) into a listing|convert (this|that|it) to a listing|save (this|that|it) as a listing|save (this|that|it) from whatsapp)\b/i.test(text)) {
-    // Kapil naming a specific raw message has to read that message before
-    // anything can be saved from it. Forcing the extract straight away made the
-    // model fill in the building and area without ever seeing the text, and it
-    // invented a property to match. Only force the extract when there is no
-    // specific message to go and read.
-    if (/\b(?:id|message|msg)\s*#?\s*\d+\b/i.test(text)) return "search_whatsapp_messages";
     return "extract_whatsapp_listing";
   }
   if (/\b(whatsapp|self[- ]chat|raw messages?|raw listing|ingest|ingested|message archive|group messages?|from (?:a|the) whatsapp group)\b/i.test(text)) return "search_whatsapp_messages";
@@ -1059,6 +1087,8 @@ function forcedToolFor(text: string): string | undefined {
   if (/\b(inventory|listing|property|properties|available|bhk|flat|apartment|office|villa|summari[sz]e)\b/i.test(text)) return "search_listings";
   return undefined;
 }
+
+const IDENTITY_TEXT_FIELDS = new Set(["name", "locality", "summary_title", "landmark_name", "street_name", "micro_market"]);
 
 const TOOL_NAMES = new Set(TOOLS.map((tool) => tool.function.name));
 
