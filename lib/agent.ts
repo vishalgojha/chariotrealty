@@ -51,7 +51,7 @@ WHATSAPP OPERATIONS
 - WhatsMeow is the private WhatsApp transport for the configured broker self-chat. It is not a public recipient directory and must not send to arbitrary numbers.
 - Pairing, connection state, and the configured self-chat phone are operational details. Do not claim WhatsApp is connected or a message was sent unless the gateway confirms it.
 - Publishing through WhatsApp remains a draft/review workflow. A message such as “post it” is a publishing confirmation only when the gateway and Chariot workflow explicitly recognize it; otherwise ask for confirmation.
-- Raw WhatsApp messages are the source of truth for WhatsApp-sourced leads. Only the last 30 days are retained and searchable. search_whatsapp_messages returns total_matching_messages, the exact number of stored messages that match, alongside a small sample of rows. Trust that number: never report that no messages exist while total_matching_messages is above zero, and never treat the short sample as the whole picture. If a search genuinely returns nothing, say no matching messages were found in the retained window — do not guess at older messages.
+- Raw WhatsApp messages are the source of truth for WhatsApp-sourced leads. Only the last 30 days are retained and searchable. search_whatsapp_messages returns total_matching_messages, the exact number of stored messages that match, alongside a small sample of rows. Trust that number: never report that no messages exist while total_matching_messages is above zero, and never treat the short sample as the whole picture. If a keyword you chose matches nothing the tool adds total_in_window and shortened previews of the real newest messages - in that case say the keyword found no exact match while the archive is not empty, and do not report an empty archive. If a search genuinely returns nothing, say no matching messages were found in the retained window — do not guess at older messages.
 - ON-DEMAND EXTRACTION: a WhatsApp message becomes a structured record only when Kapil asks for it. First call search_whatsapp_messages, then call extract_whatsapp_listing with that message's id. Never call extract_whatsapp_listing for every message a search returns, and never extract without an explicit request.
 - One message can be extracted once per table. If extract_whatsapp_listing reports already_extracted, do not create another listing; show Kapil the existing draft instead.
 - An extracted listing is an INTERNAL draft with source "whatsapp" that stays linked to the raw message it came from. Report what was extracted and the source (group, sender, message time) in one line, and say it needs review in the admin Inventory tab.
@@ -431,7 +431,7 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
   if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return JSON.stringify({ results: [], error: "Chariot WhatsApp storage is not configured" });
   const limit = Math.min(args.limit ?? 10, 20);
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const parts = [
+  const baseParts = [
     "select=id,message,message_type,sender,sender_phone,group_name,is_group,message_timestamp,created_at",
     `broker_id=eq.${encodeURIComponent(whatsappBrokerId)}`,
     `created_at=gte.${encodeURIComponent(cutoff)}`,
@@ -440,14 +440,15 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
     // actual messages Kapil is asking about.
     "message=neq.",
     "order=message_timestamp.desc",
-    `limit=${limit}`,
   ];
+  const parts = [...baseParts, `limit=${limit}`];
   if (args.query?.trim()) {
     const query = encodeURIComponent(args.query.trim());
     parts.push(`or=(message.ilike.*${query}*,sender_phone.ilike.*${query}*,group_name.ilike.*${query}*)`);
   }
   const { rows, total } = await restSelectWithCount(`chariot_whatsapp_messages?${parts.join("&")}`);
-  return JSON.stringify({
+
+  const payload: Record<string, unknown> = {
     total_matching_messages: total,
     shown_below: rows.length,
     newest_message_at: rows[0]?.message_timestamp ?? null,
@@ -455,7 +456,38 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
     retention: "Only the last 30 days are searchable.",
     extraction: "Extraction is on demand only. To turn one of these messages into a private draft, call extract_whatsapp_listing with that result's id — and only when Kapil asked for it.",
     ground_truth: "total_matching_messages is the exact number of stored messages matching this search, and the rows below are only a sample of it. Never say there are no messages while total_matching_messages is greater than zero.",
-  });
+  };
+
+  // A keyword the model chose for itself can match nothing even though the
+  // archive is full, which used to make the assistant claim there were no
+  // messages at all. When a narrowed search comes back empty, confirm against
+  // the whole window using short previews only. Previews keep the payload small
+  // and keep the provider's content filter away from the full message bodies.
+  if (args.query?.trim() && total === 0) {
+    try {
+      const preview = await whatsappWindowPreview(baseParts, 5);
+      payload.narrowed_by_keyword = args.query.trim();
+      payload.total_matching_messages = 0;
+      payload.total_in_window = preview.total;
+      payload.results = preview.rows;
+      payload.shown_below = preview.rows.length;
+      payload.newest_message_at = preview.rows[0]?.message_timestamp ?? null;
+      payload.ground_truth = `The keyword "${args.query.trim()}" matched nothing, but the retained window holds ${preview.total} messages. Show the shortened previews below. Say the keyword found no exact match while the archive itself is not empty - never report the archive as empty.`;
+    } catch {
+      // Fallback unavailable; the original zero result is still accurate.
+    }
+  }
+
+  return JSON.stringify(payload);
+}
+
+// Same window, no keyword filter, message bodies cut to a short preview.
+async function whatsappWindowPreview(baseParts: string[], limit: number): Promise<{ total: number | null; rows: Array<Record<string, unknown>> }> {
+  const { rows, total } = await restSelectWithCount(`chariot_whatsapp_messages?${[...baseParts, `limit=${limit}`].join("&")}`);
+  return {
+    total,
+    rows: rows.map((row) => ({ ...row, message: String(row.message || "").slice(0, 140), message_truncated: true })),
+  };
 }
 
 async function searchRequirements(args: SearchArgs): Promise<string> {
