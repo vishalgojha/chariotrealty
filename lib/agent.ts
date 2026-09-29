@@ -639,6 +639,45 @@ function inferCategory(sourceText: string): "residential" | "commercial" {
   return /\b(office|commercial|shop|showroom|warehouse|godown|industrial|retail)\b/i.test(sourceText) ? "commercial" : "residential";
 }
 
+// Sale/rent and the core facts are read from the message, not taken from the
+// model's arguments. The model reliably omits them and occasionally invents
+// them, and a draft with a wrong price or configuration is worse than a sparse
+// one, so anything it does not clearly state is derived from the text.
+function deriveFieldsFromText(sourceText: string): Record<string, unknown> {
+  const derived: Record<string, unknown> = {};
+  const text = sourceText.replace(/,/g, "");
+
+  const bhk = text.match(/(\d+)\s*BHK\b/i);
+  if (bhk) derived.bhk = Number(bhk[1]);
+
+  if (/\bfully furnished\b|\bfurnished\b/i.test(sourceText) && !/\bunfurnished\b|\bsemi[- ]?furnished\b/i.test(sourceText)) {
+    derived.furnishing_status = "Furnished";
+  } else if (/\bsemi[- ]?furnished\b/i.test(sourceText)) {
+    derived.furnishing_status = "Semi-Furnished";
+  } else if (/\bunfurnished\b/i.test(sourceText)) {
+    derived.furnishing_status = "Unfurnished";
+  }
+
+  const carpet = text.match(/(\d+)\s*sq\.?\s*ft\.?\s*(?:of\s*)?carpet/i);
+  if (carpet) derived.carpet_area_sqft = Number(carpet[1]);
+
+  const builtUp = text.match(/(\d+)\s*sq\.?\s*ft\.?\s*(?:of\s*)?built[\s-]?up/i);
+  if (builtUp) derived.built_up_area_sqft = Number(builtUp[1]);
+
+  const parking = text.match(/(\d+)\s*car\s*park/i);
+  if (parking) derived.car_parking_count = Number(parking[1]);
+
+  const rent = text.match(/(?:rs\.?|₹|inr)?\s*(\d+(?:\.\d+)?)\s*(lakh|lacs|lac|crore|cr|thousand)?\s*(?:\/|\s+per\s*)\s*(?:month|monthly|mo\b)/i);
+  if (rent) {
+    const amount = Number(rent[1]);
+    const unit = (rent[2] || "").toLowerCase();
+    const multiplier = unit.startsWith("cr") ? 10_000_000 : unit.startsWith("l") ? 100_000 : unit.startsWith("thou") ? 1_000 : 1;
+    derived.monthly_rent = Math.round(amount * multiplier);
+  }
+
+  return derived;
+}
+
 async function extractWhatsappListing(args: Record<string, unknown>): Promise<string> {
   const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
   if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return noRow("Chariot WhatsApp storage is not configured.");
@@ -723,6 +762,9 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
 
   const created = JSON.parse(await createListing({
     ...args,
+    ...deriveFieldsFromText(sourceText),
+    category,
+    transaction,
     description,
     source: "whatsapp",
     raw_message_id: rawMessageId,
