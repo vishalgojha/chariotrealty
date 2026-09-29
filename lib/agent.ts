@@ -458,26 +458,6 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
   });
 }
 
-// A general "any new messages?" question must not be answered off a keyword
-// filter the model invented for itself — the same question asked twice used
-// different words and produced totals ranging from zero to 12,014. Fetch the
-// unfiltered window totals up front so the model always has ground truth.
-async function whatsappWindowSummary(): Promise<{ total: number | null; newest: string | null }> {
-  const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
-  if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return { total: null, newest: null };
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const path = [
-    "select=id,message_timestamp",
-    `broker_id=eq.${encodeURIComponent(whatsappBrokerId)}`,
-    `created_at=gte.${encodeURIComponent(cutoff)}`,
-    "message=neq.",
-    "order=message_timestamp.desc",
-    "limit=1",
-  ].join("&");
-  const { rows, total } = await restSelectWithCount(`chariot_whatsapp_messages?${path}`);
-  return { total, newest: (rows[0]?.message_timestamp as string) || null };
-}
-
 async function searchRequirements(args: SearchArgs): Promise<string> {
   const category = args.category || "residential";
   const transaction = args.transaction || "sale";
@@ -970,24 +950,27 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
   }
 
   if (forcedTool === "search_whatsapp_messages") {
+    // Run the search here instead of letting the model call the tool. The model
+    // kept choosing its own query keyword, so the same question returned
+    // different slices - 0, 2,987, or 12,014 rows - and it sometimes reported
+    // the archive as empty. A general question gets the unfiltered window.
     try {
-      const baseline = await whatsappWindowSummary();
-      if (baseline.total) {
-        messages.push({
-          role: "system",
-          content: `Verified live baseline, just checked: the retained WhatsApp window holds ${baseline.total} stored messages with text${baseline.newest ? `, newest at ${baseline.newest}` : ""}. Answer general questions about recent WhatsApp messages from this baseline plus the sample the tool returns. Do not narrow the answer to a keyword you chose yourself, and never claim the archive is empty.`,
-        });
-      }
+      const result = await searchWhatsappMessages({ limit: 10 });
+      messages.push({
+        role: "system",
+        content: `Live unfiltered search of the retained WhatsApp window, run for this exact question with no keyword narrowing. This is the true current picture: ${result}`,
+      });
     } catch {
-      // Baseline unavailable; the tool result still carries its own exact count.
+      // Search unavailable; let the model try the tool itself and report honestly.
     }
   }
 
+  const preloaded = forcedTool === "search_whatsapp_messages";
   let emptyRetries = 0;
   for (let round = 0; round < 4; round++) {
     const completion = hooks
-      ? await callSarvamStream(messages, round === 0 ? forcedTool : undefined, hooks)
-      : await callSarvam(messages, round === 0 ? forcedTool : undefined);
+      ? await callSarvamStream(messages, round === 0 && !preloaded ? forcedTool : undefined, hooks)
+      : await callSarvam(messages, round === 0 && !preloaded ? forcedTool : undefined);
     const choice = completion.choices?.[0];
     if (!choice) {
       const detail = completion.error?.message || "No answer from the assistant";
