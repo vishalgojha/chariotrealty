@@ -963,6 +963,90 @@ function forcedToolFor(text: string): string | undefined {
   return undefined;
 }
 
+const TOOL_NAMES = new Set(TOOLS.map((tool) => tool.function.name));
+
+// Recovers a tool call that the model wrote as text. It arrives in a few shapes:
+// a bare object, an array of objects, {function:{name,arguments}} or
+// {name,parameters}, sometimes wrapped in a code fence, sometimes truncated
+// mid-object. Only a name that matches a real tool is accepted, so an ordinary
+// answer that happens to contain JSON is never executed as a tool.
+function coerceTextToolCall(content: string | null | undefined): SarvamToolCall[] {
+  if (!content) return [];
+  const text = content.trim();
+  const start = text.search(/[[{]/);
+  if (start < 0) return [];
+
+  const candidate = text.slice(start).replace(/```(?:json)?/gi, "").trim();
+
+  // The model is regularly cut off mid-object, so the call can arrive
+  // truncated. Try the text as-is, then with its open brackets closed, then
+  // with a dangling key dropped, then shorter prefixes that cut trailing text
+  // after a complete call.
+  const repaired = [candidate, closeOpenBrackets(candidate)];
+  const withoutDanglingKey = closeOpenBrackets(candidate.replace(/,?\s*"[^"]*"\s*$/, ""));
+  if (!repaired.includes(withoutDanglingKey)) repaired.push(withoutDanglingKey);
+
+  for (const attempt of [...parsePrefixes(candidate), ...repaired]) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(attempt);
+    } catch {
+      continue;
+    }
+    const calls = toToolCalls(parsed);
+    if (calls.length > 0) return calls;
+  }
+  return [];
+}
+
+// Closes the structures a truncated tool call left open, so the JSON that was
+// cut off mid-object can still be parsed. Braces inside strings are ignored.
+function closeOpenBrackets(candidate: string): string {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of candidate) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") stack.push(ch);
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+  const closers: string[] = stack.reverse().map((ch) => (ch === "{" ? "}" : "]"));
+  if (inString) closers.unshift('"');
+  return candidate + closers.join("");
+}
+
+function parsePrefixes(candidate: string): string[] {
+  const prefixes = [candidate];
+  for (let i = candidate.length - 1, tried = 0; i >= 0 && tried < 48; i -= 1) {
+    if (candidate[i] !== "}" && candidate[i] !== "]") continue;
+    tried += 1;
+    prefixes.push(candidate.slice(0, i + 1));
+  }
+  return prefixes;
+}
+
+function toToolCalls(parsed: unknown): SarvamToolCall[] {
+  const items = Array.isArray(parsed) ? parsed : [parsed];
+  const calls: SarvamToolCall[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const fn = (record.function && typeof record.function === "object" ? record.function : record) as Record<string, unknown>;
+    const name = typeof fn.name === "string" ? fn.name : typeof record.tool === "string" ? record.tool : "";
+    if (!name || !TOOL_NAMES.has(name)) continue;
+    const rawArgs = fn.arguments ?? fn.parameters ?? record.parameters ?? record.arguments ?? {};
+    const args = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs);
+    calls.push({ id: `text-tool-${name}-${calls.length}`, type: "function", function: { name, arguments: args } });
+  }
+  return calls;
+}
+
 async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHooks): Promise<{ reply: string }> {
   const messages = [{ role: "system" as const, content: BUSINESS_RULES }, ...buildMessages(text, history)];
   const forcedTool = forcedToolFor(text);
@@ -993,12 +1077,19 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
     }
     const message = choice.message;
 
-    if (message.tool_calls && message.tool_calls.length > 0) {
+    // sarvam-105b intermittently writes a forced tool call out as plain text
+    // instead of returning it in tool_calls - the system prompt tells it to keep
+    // JSON away from Kapil, which fights the forced tool_choice. When that
+    // happens the request silently does nothing: Kapil asks to save a listing
+    // and no row is written. Recover the call from the text and run it.
+    const calls = message.tool_calls?.length ? message.tool_calls : coerceTextToolCall(message.content);
+
+    if (calls.length > 0) {
       // Any text streamed during this round is a preamble the model replaced
       // with tool calls, so tell the client to drop the partial answer.
       hooks?.onReset?.();
-      messages.push({ role: "assistant", content: null, tool_calls: message.tool_calls });
-      for (const call of message.tool_calls) {
+      messages.push({ role: "assistant", content: null, tool_calls: calls });
+      for (const call of calls) {
         try {
           const result = await runTool(call.function.name, call.function.arguments || "{}");
           messages.push({ role: "tool", content: result, tool_call_id: call.id });
