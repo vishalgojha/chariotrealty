@@ -165,7 +165,7 @@ function PropertyCard({ property }: { property: Property }) {
         <p className="loc">{property.location}</p>
         <p className="price">{property.price} {property.priceNote && <span>{property.priceNote}</span>}</p>
         <div className="specs">
-          {property.specs.map(([key, value]) => <div key={key}><p className="spec-key">{key}</p><p className="spec-value">{value}</p></div>)}
+          {property.specs.map(([key, value]) => <div key={key}><p className="spec-key">{key}</p><p className="spec-value" title={value}>{value}</p></div>)}
         </div>
         {availableLinks.length > 0 && <div className="media-links">
           {availableLinks.map((link) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="media-link-btn">{link.icon === "folder" ? <FolderIcon /> : <InstagramIcon size={12} />}{link.label}</a>)}

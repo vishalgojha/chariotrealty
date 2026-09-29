@@ -949,28 +949,15 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
     }
   }
 
-  if (forcedTool === "search_whatsapp_messages") {
-    // Run the search here instead of letting the model call the tool. The model
-    // kept choosing its own query keyword, so the same question returned
-    // different slices - 0, 2,987, or 12,014 rows - and it sometimes reported
-    // the archive as empty. A general question gets the unfiltered window.
-    try {
-      const result = await searchWhatsappMessages({ limit: 10 });
-      messages.push({
-        role: "system",
-        content: `Live unfiltered search of the retained WhatsApp window, run for this exact question with no keyword narrowing. This is the true current picture: ${result}`,
-      });
-    } catch {
-      // Search unavailable; let the model try the tool itself and report honestly.
-    }
-  }
+  // Note: a general WhatsApp search must stay in the tool role. Injecting raw
+  // broker messages into a system message trips the provider's content policy
+  // and the entire request is rejected.
 
-  const preloaded = forcedTool === "search_whatsapp_messages";
   let emptyRetries = 0;
   for (let round = 0; round < 4; round++) {
     const completion = hooks
-      ? await callSarvamStream(messages, round === 0 && !preloaded ? forcedTool : undefined, hooks)
-      : await callSarvam(messages, round === 0 && !preloaded ? forcedTool : undefined);
+      ? await callSarvamStream(messages, round === 0 ? forcedTool : undefined, hooks)
+      : await callSarvam(messages, round === 0 ? forcedTool : undefined);
     const choice = completion.choices?.[0];
     if (!choice) {
       const detail = completion.error?.message || "No answer from the assistant";
@@ -984,8 +971,14 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
       hooks?.onReset?.();
       messages.push({ role: "assistant", content: null, tool_calls: message.tool_calls });
       for (const call of message.tool_calls) {
+        // For a general WhatsApp question, pin the first search to the whole
+        // retained window. Otherwise the model picks a keyword, and the answer
+        // depends on which word it happened to choose.
+        const args = round === 0 && call.function.name === "search_whatsapp_messages"
+          ? JSON.stringify({ limit: 10 })
+          : call.function.arguments || "{}";
         try {
-          const result = await runTool(call.function.name, call.function.arguments || "{}");
+          const result = await runTool(call.function.name, args);
           messages.push({ role: "tool", content: result, tool_call_id: call.id });
         } catch (error) {
           messages.push({ role: "tool", content: JSON.stringify({ error: error instanceof Error ? error.message : "Tool failed" }), tool_call_id: call.id });
