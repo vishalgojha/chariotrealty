@@ -51,7 +51,7 @@ WHATSAPP OPERATIONS
 - WhatsMeow is the private WhatsApp transport for the configured broker self-chat. It is not a public recipient directory and must not send to arbitrary numbers.
 - Pairing, connection state, and the configured self-chat phone are operational details. Do not claim WhatsApp is connected or a message was sent unless the gateway confirms it.
 - Publishing through WhatsApp remains a draft/review workflow. A message such as “post it” is a publishing confirmation only when the gateway and Chariot workflow explicitly recognize it; otherwise ask for confirmation.
-- Raw WhatsApp messages are the source of truth for WhatsApp-sourced leads. Only the last 30 days are retained and searchable. If a search returns nothing, say no matching messages were found in the retained window — do not guess at older messages.
+- Raw WhatsApp messages are the source of truth for WhatsApp-sourced leads. Only the last 30 days are retained and searchable. search_whatsapp_messages returns total_matching_messages, the exact number of stored messages that match, alongside a small sample of rows. Trust that number: never report that no messages exist while total_matching_messages is above zero, and never treat the short sample as the whole picture. If a search genuinely returns nothing, say no matching messages were found in the retained window — do not guess at older messages.
 - ON-DEMAND EXTRACTION: a WhatsApp message becomes a structured record only when Kapil asks for it. First call search_whatsapp_messages, then call extract_whatsapp_listing with that message's id. Never call extract_whatsapp_listing for every message a search returns, and never extract without an explicit request.
 - One message can be extracted once per table. If extract_whatsapp_listing reports already_extracted, do not create another listing; show Kapil the existing draft instead.
 - An extracted listing is an INTERNAL draft with source "whatsapp" that stays linked to the raw message it came from. Report what was extracted and the source (group, sender, message time) in one line, and say it needs review in the admin Inventory tab.
@@ -330,6 +330,21 @@ async function restSelect(path: string) {
   return rows;
 }
 
+// PostgREST reports the full number of matches in Content-Range when asked for
+// it. The tool result is capped at 10 rows, so without this the assistant only
+// ever sees a small sample and can wrongly report that there is nothing to find.
+async function restSelectWithCount(path: string): Promise<{ rows: Array<Record<string, unknown>>; total: number | null }> {
+  const { supabaseUrl, serviceKey } = config();
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/rest/v1/${path}`, {
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, Prefer: "count=exact" },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Database search returned ${response.status}`);
+  const rows = await response.json() as Array<Record<string, unknown>>;
+  const total = Number((response.headers.get("content-range") || "").split("/")[1]);
+  return { rows, total: Number.isFinite(total) ? total : null };
+}
+
 async function restPost(path: string, body: Record<string, unknown>) {
   const { supabaseUrl, serviceKey } = config();
   const response = await fetch(`${supabaseUrl.replace(/\/$/, "")}/rest/v1/${path}`, {
@@ -431,11 +446,15 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
     const query = encodeURIComponent(args.query.trim());
     parts.push(`or=(message.ilike.*${query}*,sender_phone.ilike.*${query}*,group_name.ilike.*${query}*)`);
   }
-  const rows = await restSelect(`chariot_whatsapp_messages?${parts.join("&")}`);
+  const { rows, total } = await restSelectWithCount(`chariot_whatsapp_messages?${parts.join("&")}`);
   return JSON.stringify({
+    total_matching_messages: total,
+    shown_below: rows.length,
+    newest_message_at: rows[0]?.message_timestamp ?? null,
     results: rows,
     retention: "Only the last 30 days are searchable.",
     extraction: "Extraction is on demand only. To turn one of these messages into a private draft, call extract_whatsapp_listing with that result's id — and only when Kapil asked for it.",
+    ground_truth: "total_matching_messages is the exact number of stored messages matching this search, and the rows below are only a sample of it. Never say there are no messages while total_matching_messages is greater than zero.",
   });
 }
 
