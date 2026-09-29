@@ -458,6 +458,26 @@ async function searchWhatsappMessages(args: { query?: string; limit?: number }):
   });
 }
 
+// A general "any new messages?" question must not be answered off a keyword
+// filter the model invented for itself — the same question asked twice used
+// different words and produced totals ranging from zero to 12,014. Fetch the
+// unfiltered window totals up front so the model always has ground truth.
+async function whatsappWindowSummary(): Promise<{ total: number | null; newest: string | null }> {
+  const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
+  if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return { total: null, newest: null };
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const path = [
+    "select=id,message_timestamp",
+    `broker_id=eq.${encodeURIComponent(whatsappBrokerId)}`,
+    `created_at=gte.${encodeURIComponent(cutoff)}`,
+    "message=neq.",
+    "order=message_timestamp.desc",
+    "limit=1",
+  ].join("&");
+  const { rows, total } = await restSelectWithCount(`chariot_whatsapp_messages?${path}`);
+  return { total, newest: (rows[0]?.message_timestamp as string) || null };
+}
+
 async function searchRequirements(args: SearchArgs): Promise<string> {
   const category = args.category || "residential";
   const transaction = args.transaction || "sale";
@@ -946,6 +966,20 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
         role: "system",
         content: "Source verification requested. Explain that the previous answer should be verified against the current private inventory, and do not invent a source or deny access without checking.",
       });
+    }
+  }
+
+  if (forcedTool === "search_whatsapp_messages") {
+    try {
+      const baseline = await whatsappWindowSummary();
+      if (baseline.total) {
+        messages.push({
+          role: "system",
+          content: `Verified live baseline, just checked: the retained WhatsApp window holds ${baseline.total} stored messages with text${baseline.newest ? `, newest at ${baseline.newest}` : ""}. Answer general questions about recent WhatsApp messages from this baseline plus the sample the tool returns. Do not narrow the answer to a keyword you chose yourself, and never claim the archive is empty.`,
+        });
+      }
+    } catch {
+      // Baseline unavailable; the tool result still carries its own exact count.
     }
   }
 
