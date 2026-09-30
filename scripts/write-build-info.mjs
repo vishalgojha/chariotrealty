@@ -4,8 +4,8 @@
 // twice made a stale container look like a code bug.
 import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
 
 function resolveSha() {
   const fromEnv = process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || "";
@@ -21,18 +21,39 @@ function resolveSha() {
 }
 
 // Deploy images do not always carry git metadata, so a fingerprint of the
-// files that decide behaviour is recorded too. It can be recomputed from a
-// checkout to prove which code a container is actually running.
-const FINGERPRINTED = ["lib/agent.ts", "lib/inventory.ts", "app/api/agent/chat/route.ts", "app/api/properties/route.ts"];
+// source is recorded too. It can be recomputed from any checkout to prove
+// which code a container is running. It covers every source file, not a
+// hand-picked list: a fixed list silently keeps matching after a change
+// elsewhere in the tree.
+const ROOTS = ["app", "lib", "scripts"];
+const SOURCE = /\.(ts|tsx|mjs|js|json|css)$/;
+const SKIP = /(build-info\.generated|tsbuildinfo|node_modules|\.next)/;
+
+function sourceFiles(dir, found = []) {
+  for (const entry of readdirSync(dir)) {
+    if (SKIP.test(entry)) continue;
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) sourceFiles(full, found);
+    else if (SOURCE.test(entry)) found.push(full);
+  }
+  return found;
+}
 
 function fingerprint() {
   const hash = createHash("sha256");
-  for (const file of FINGERPRINTED) {
+  const root = process.cwd();
+  for (const dir of ROOTS) {
+    let files = [];
     try {
-      hash.update(file);
-      hash.update(readFileSync(join(process.cwd(), file)));
+      files = sourceFiles(join(root, dir));
     } catch {
-      hash.update(`${file}:missing`);
+      hash.update(`${dir}:missing`);
+      continue;
+    }
+    // Sorted so the result does not depend on directory order.
+    for (const file of files.sort()) {
+      hash.update(relative(root, file));
+      hash.update(readFileSync(file));
     }
   }
   return hash.digest("hex").slice(0, 12);
