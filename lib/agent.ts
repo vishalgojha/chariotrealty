@@ -1111,7 +1111,7 @@ const TOOL_NAMES = new Set(TOOLS.map((tool) => tool.function.name));
 // {name,parameters}, sometimes wrapped in a code fence, sometimes truncated
 // mid-object. Only a name that matches a real tool is accepted, so an ordinary
 // answer that happens to contain JSON is never executed as a tool.
-function coerceTextToolCall(content: string | null | undefined): SarvamToolCall[] {
+function coerceTextToolCall(content: string | null | undefined, expectedTool: string): SarvamToolCall[] {
   if (!content) return [];
   const text = content.trim();
   const start = text.search(/[[{]/);
@@ -1134,7 +1134,7 @@ function coerceTextToolCall(content: string | null | undefined): SarvamToolCall[
     } catch {
       continue;
     }
-    const calls = toToolCalls(parsed);
+    const calls = toToolCalls(parsed, expectedTool);
     if (calls.length > 0) return calls;
   }
   return [];
@@ -1172,7 +1172,7 @@ function parsePrefixes(candidate: string): string[] {
   return prefixes;
 }
 
-function toToolCalls(parsed: unknown): SarvamToolCall[] {
+function toToolCalls(parsed: unknown, expectedTool: string): SarvamToolCall[] {
   const items = Array.isArray(parsed) ? parsed : [parsed];
   const calls: SarvamToolCall[] = [];
   for (const item of items) {
@@ -1181,6 +1181,10 @@ function toToolCalls(parsed: unknown): SarvamToolCall[] {
     const fn = (record.function && typeof record.function === "object" ? record.function : record) as Record<string, unknown>;
     const name = typeof fn.name === "string" ? fn.name : typeof record.tool === "string" ? record.tool : "";
     if (!name || !TOOL_NAMES.has(name)) continue;
+    // Only the tool this round actually asked for may be recovered from text.
+    // Without this, anything pasted into the chat that the model echoes back
+    // would be executed as a tool call.
+    if (name !== expectedTool) continue;
     const rawArgs = fn.arguments ?? fn.parameters ?? record.parameters ?? record.arguments ?? {};
     const args = typeof rawArgs === "string" ? rawArgs : JSON.stringify(rawArgs);
     calls.push({ id: `text-tool-${name}-${calls.length}`, type: "function", function: { name, arguments: args } });
@@ -1231,9 +1235,10 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
 
   let emptyRetries = 0;
   for (let round = 0; round < 4; round++) {
+    const askedTool = round === 0 ? forcedTool : undefined;
     const completion = hooks
-      ? await callSarvamStream(messages, round === 0 ? forcedTool : undefined, hooks)
-      : await callSarvam(messages, round === 0 ? forcedTool : undefined);
+      ? await callSarvamStream(messages, askedTool, hooks)
+      : await callSarvam(messages, askedTool);
     const choice = completion.choices?.[0];
     if (!choice) {
       const detail = completion.error?.message || "No answer from the assistant";
@@ -1246,7 +1251,11 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
     // JSON away from Kapil, which fights the forced tool_choice. When that
     // happens the request silently does nothing: Kapil asks to save a listing
     // and no row is written. Recover the call from the text and run it.
-    const calls = message.tool_calls?.length ? message.tool_calls : coerceTextToolCall(message.content);
+    const calls = message.tool_calls?.length
+      ? message.tool_calls
+      : askedTool
+        ? coerceTextToolCall(message.content, askedTool)
+        : [];
 
     if (calls.length > 0) {
       // Any text streamed during this round is a preamble the model replaced
