@@ -866,11 +866,28 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
 
 async function updateListing(args: Record<string, unknown>): Promise<string> {
   const id = Number(args.id);
-  const category = String(args.category || "residential");
-  const transaction = String(args.transaction || "sale");
+  const category = String(args.category || "");
+  const transaction = String(args.transaction || "");
+  const spoken = String(args.__spoken_text || "");
+  if (!args.category || !args.transaction) return noRow("I need the listing category and whether it is for sale or rent before updating it.");
   const table = listingTable(category, transaction);
   if (!Number.isFinite(id) || !table) return noRow("I need the listing id to update it.");
   if (!(await rowExists(table, id))) return noRow(`I couldn't find listing ${id} to update.`);
+
+  for (const key of ["building_name", "locality", "micro_market", "summary_title", "configuration_type", "furnishing_status", "possession_status"]) {
+    const value = args[key];
+    if (spoken && typeof value === "string" && value.trim() && !isGroundedIn(value, spoken)) {
+      return noRow(`I did not update this because "${value.trim()}" is not in what you said. Say the exact value again and I will update it.`);
+    }
+  }
+
+  for (const key of ["bhk", "carpet_area_sqft", "car_parking_count", "monthly_rent", "total_asking_price"]) {
+    if (args[key] !== undefined && (typeof args[key] !== "number" || !Number.isFinite(args[key]) || args[key] <= 0)) {
+      return noRow(`${key} must be a positive number.`);
+    }
+  }
+  if (transaction === "rent" && typeof args.total_asking_price === "number") return noRow("This is a rent listing, so update monthly_rent instead of total_asking_price.");
+  if (transaction === "sale" && typeof args.monthly_rent === "number") return noRow("This is a sale listing, so update total_asking_price instead of monthly_rent.");
 
   const payload: Record<string, unknown> = {};
   const copy = [
@@ -910,7 +927,14 @@ async function updateListing(args: Record<string, unknown>): Promise<string> {
 
 async function deleteListing(args: Record<string, unknown>): Promise<string> {
   const id = Number(args.id);
-  const table = listingTable(String(args.category || "residential"), String(args.transaction || "sale"));
+  const category = String(args.category || "");
+  const transaction = String(args.transaction || "");
+  const spoken = String(args.__spoken_text || "");
+  if (!args.category || !args.transaction) return noRow("I need the listing category and whether it is for sale or rent before deleting it.");
+  if (!/\b(yes|confirm|confirmed|go ahead|do it|please proceed)\b[\s\S]{0,80}\b(delete|remove)\b|\b(delete|remove)\b[\s\S]{0,80}\b(yes|confirm|confirmed|go ahead|do it|please proceed)\b/i.test(spoken)) {
+    return noRow("I need your explicit confirmation before deleting a listing. Say, for example, 'yes, delete it'.");
+  }
+  const table = listingTable(category, transaction);
   if (!Number.isFinite(id) || !table) return noRow("I need the listing id to delete it.");
   if (!(await rowExists(table, id))) return noRow(`I couldn't find listing ${id} to delete.`);
 
