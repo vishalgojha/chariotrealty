@@ -72,10 +72,26 @@ function textOf(value: unknown): string {
   return String(value);
 }
 
+// The description comes from a WhatsApp message, so it carries emoji and
+// markdown that render as literal asterisks on a public listing page.
+function plainText(value: string): string {
+  return value
+    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, "")
+    .replace(/[\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]/g, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    .trim();
+}
+
 // The site stores the price as a display string, matching the existing rows:
 // "₹3.00L / mo" for rent and "From ₹4.25 Cr" for sale. Publishing a raw
 // number rendered as 600000 on the property page.
-export function formatDisplayPrice(value: number | null, transaction: "rent" | "sale", raw: string): string {
+function formatDisplayPrice(value: number | null, transaction: "rent" | "sale", raw: string): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return raw;
   if (transaction === "rent") return `₹${(value / 100000).toFixed(2)}L / mo`;
   if (value >= 10000000) return `From ₹${(value / 10000000).toFixed(2)} Cr`;
@@ -120,7 +136,7 @@ function toPublicProperty(table: DraftTable, row: Record<string, unknown>, slug:
     location: locality,
     parking: row.car_parking_count == null ? "" : String(row.car_parking_count),
     possession: String(row.possession_status || "").trim(),
-    description: textOf(row.broker_notes),
+    description: plainText(textOf(row.broker_notes)),
     source: String(row.source || "agent"),
     source_reference: sourceReference(table, Number(row.id)),
     status: "draft",
