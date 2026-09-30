@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { askAgent } from "@/lib/agent";
 
 function authorized(request: NextRequest) {
-  const configured = process.env.PROPAI_INTERNAL_TOKEN || process.env.CHARIOT_WHATSAPP_INTERNAL_TOKEN || "";
-  const provided = request.headers.get("x-propai-internal-token") || "";
+  const configured = process.env.CHARIOT_WHATSAPP_INTERNAL_TOKEN || "";
+  const provided = request.headers.get("x-chariot-internal-token") || "";
   return Boolean(configured && provided && configured === provided);
 }
 

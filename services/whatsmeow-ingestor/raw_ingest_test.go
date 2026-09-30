@@ -27,7 +27,7 @@ func TestMessagePayloadMapRejectsInvalidPayload(t *testing.T) {
 }
 
 func TestGroupRawIngestAllowedDropsGroupsByDefault(t *testing.T) {
-	t.Setenv("PROPAI_SELF_CHAT_ONLY_BROKERS", "chariot-realty")
+	t.Setenv("CHARIOT_SELF_CHAT_ONLY_BROKERS", "chariot-realty")
 	t.Setenv("CHARIOT_WHATSAPP_INGEST_GROUPS", "")
 
 	if groupRawIngestAllowed("chariot-realty") {
@@ -42,7 +42,7 @@ func TestGroupRawIngestAllowedDropsGroupsByDefault(t *testing.T) {
 }
 
 func TestGroupRawIngestAllowedHonoursBrokerOptIn(t *testing.T) {
-	t.Setenv("PROPAI_SELF_CHAT_ONLY_BROKERS", "chariot-realty, other-broker")
+	t.Setenv("CHARIOT_SELF_CHAT_ONLY_BROKERS", "chariot-realty, other-broker")
 	t.Setenv("CHARIOT_WHATSAPP_INGEST_GROUPS", "other-broker, chariot-realty")
 
 	if !groupRawIngestAllowed("chariot-realty") {

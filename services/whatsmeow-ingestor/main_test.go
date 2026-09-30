@@ -220,7 +220,7 @@ func TestSelfChatCommandAcceptsOwnJIDAndLID(t *testing.T) {
 }
 
 func TestInternalOnlyRejectsMissingToken(t *testing.T) {
-	t.Setenv("PROPAI_INTERNAL_TOKEN", "expected-token")
+	t.Setenv("CHARIOT_WHATSAPP_INTERNAL_TOKEN", "expected-token")
 	called := false
 	handler := internalOnly(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
@@ -235,13 +235,13 @@ func TestInternalOnlyRejectsMissingToken(t *testing.T) {
 }
 
 func TestInternalOnlyAcceptsValidToken(t *testing.T) {
-	t.Setenv("PROPAI_INTERNAL_TOKEN", "expected-token")
+	t.Setenv("CHARIOT_WHATSAPP_INTERNAL_TOKEN", "expected-token")
 	handler := internalOnly(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}, false)
 
 	request := httptest.NewRequest(http.MethodPost, "/connect", nil)
-	request.Header.Set("X-PropAI-Internal-Token", "expected-token")
+	request.Header.Set("X-Chariot-Internal-Token", "expected-token")
 	recorder := httptest.NewRecorder()
 	handler(recorder, request)
 	if recorder.Code != http.StatusNoContent {
@@ -250,7 +250,7 @@ func TestInternalOnlyAcceptsValidToken(t *testing.T) {
 }
 
 func TestHealthAllowsMinimalPublicLiveness(t *testing.T) {
-	t.Setenv("PROPAI_INTERNAL_TOKEN", "expected-token")
+	t.Setenv("CHARIOT_WHATSAPP_INTERNAL_TOKEN", "expected-token")
 	handler := internalOnly(func(http.ResponseWriter, *http.Request) {
 		t.Fatal("protected health handler should not run")
 	}, true)

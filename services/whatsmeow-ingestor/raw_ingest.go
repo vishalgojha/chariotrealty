@@ -151,7 +151,7 @@ func resolveLIDPhone(db *sql.DB, senderJID string) string {
 }
 
 // insertRawMessage writes a WhatsApp message into Chariot's isolated raw store.
-// PropAI's raw_messages database is intentionally not used here.
+// Chariot's raw message store is the source of truth here.
 //
 // Returns the inserted row ID.
 func (sm *SessionManager) insertRawMessage(brokerID string, payload map[string]interface{}) (int64, error) {
@@ -330,10 +330,8 @@ func triggerExtraction(rawID int64, tenantID string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if token := strings.TrimSpace(os.Getenv("PROPAI_INTERNAL_TOKEN")); token != "" {
-		req.Header.Set("X-PropAI-Internal-Token", token)
-	} else if token := strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_KEY")); token != "" {
-		req.Header.Set("X-PropAI-Internal-Token", token)
+	if token := strings.TrimSpace(os.Getenv("CHARIOT_WHATSAPP_INTERNAL_TOKEN")); token != "" {
+		req.Header.Set("X-Chariot-Internal-Token", token)
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {

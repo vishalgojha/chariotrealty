@@ -55,7 +55,7 @@ func (sm *SessionManager) captureMedia(s *BrokerSession, msg *waE2E.Message, cha
 	}
 
 	maxBytes := uint64(20 * 1024 * 1024)
-	if raw := strings.TrimSpace(os.Getenv("PROPAI_MEDIA_MAX_BYTES")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("CHARIOT_MEDIA_MAX_BYTES")); raw != "" {
 		if parsed, err := strconv.ParseUint(raw, 10, 64); err == nil {
 			maxBytes = parsed
 		}

@@ -42,9 +42,9 @@ func (f *fakeSender) snapshot() []string {
 
 func TestNDJSONStreamParsesDoneEvent(t *testing.T) {
 	ndjson := strings.Join([]string{
-		`{"event":"chunk","delta":"PropAI- • Hi"}`,
+		`{"event":"chunk","delta":"Chariot • Hi"}`,
 		`{"event":"chunk","delta":" there"}`,
-		`{"event":"done","reply":"PropAI- • Hi there"}`,
+		`{"event":"done","reply":"Chariot • Hi there"}`,
 		"",
 	}, "\n")
 	resp := &http.Response{
@@ -75,13 +75,13 @@ func TestNDJSONStreamParsesDoneEvent(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d: %+v", len(events), events)
 	}
-	if events[0].Event != "chunk" || events[0].Delta != "PropAI- • Hi" {
+	if events[0].Event != "chunk" || events[0].Delta != "Chariot • Hi" {
 		t.Fatalf("event[0] wrong: %+v", events[0])
 	}
 	if events[1].Event != "chunk" || events[1].Delta != " there" {
 		t.Fatalf("event[1] wrong: %+v", events[1])
 	}
-	if events[2].Event != "done" || events[2].Reply != "PropAI- • Hi there" {
+	if events[2].Event != "done" || events[2].Reply != "Chariot • Hi there" {
 		t.Fatalf("event[2] wrong: %+v", events[2])
 	}
 }
@@ -144,7 +144,7 @@ func TestSessionManagerHandleSelfChatStreamAccumulatesChunks(t *testing.T) {
 		`{"event":"chunk","delta":"• Hi"}`,
 		`{"event":"chunk","delta":" there"}`,
 		`{"event":"chunk","delta":", here's what I found"}`,
-		`{"event":"done","reply":"PropAI- • Hi there, here's what I found\n• 3 active 2 BHK in Bandra"}`,
+		`{"event":"done","reply":"Chariot • Hi there, here's what I found\n• 3 active 2 BHK in Bandra"}`,
 		"",
 	}, "\n")
 	resp := &http.Response{
@@ -198,8 +198,8 @@ func TestSessionManagerHandleSelfChatStreamAccumulatesChunks(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 flush, got %d: %+v", len(got), got)
 	}
-	if !strings.Contains(got[0], "PropAI-") {
-		t.Fatalf("expected reply to start with PropAI-, got %q", got[0])
+	if !strings.Contains(got[0], "Chariot") {
+		t.Fatalf("expected reply to start with Chariot, got %q", got[0])
 	}
 }
 

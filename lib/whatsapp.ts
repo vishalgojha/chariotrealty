@@ -15,7 +15,7 @@ async function gateway(path: string, init: RequestInit = {}) {
   const { baseUrl, token, brokerId } = config();
   if (!baseUrl || !token) throw new Error("WhatsMeow gateway is not configured");
   const headers = new Headers(init.headers);
-  headers.set("X-PropAI-Internal-Token", token);
+  headers.set("X-Chariot-Internal-Token", token);
   headers.set("X-Broker-Id", brokerId);
   return fetch(`${baseUrl}${path}`, { ...init, headers, cache: "no-store" });
 }

@@ -38,7 +38,7 @@ var (
 	apiURL               = getEnv("CHARIOT_API_URL", "https://api.chariotrealty.in")
 	extractionTriggerURL = getEnv("CHARIOT_EXTRACTION_TRIGGER_URL", "")
 	instanceName         = getEnv("CHARIOT_WHATSAPP_INSTANCE_NAME", "chariot-whatsmeow")
-	sendPort             = getEnv("PROPAI_SEND_PORT", "3001")
+	sendPort             = getEnv("CHARIOT_SEND_PORT", "3001")
 	statusClient         = &http.Client{Timeout: 5 * time.Second}
 )
 
@@ -228,7 +228,7 @@ func (s *BrokerSession) postStatus(st Status) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if token := internalServiceToken(); token != "" {
-		req.Header.Set("X-PropAI-Internal-Token", token)
+		req.Header.Set("X-Chariot-Internal-Token", token)
 	}
 	resp, err := statusClient.Do(req)
 	if err != nil {
@@ -1225,7 +1225,7 @@ func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
 		return
 	}
 	// WhatsApp status updates are not group conversations and are not part of
-	// PropAI's market mirror. Drop them before logging, counters, media work,
+	// Chariot's market mirror. Drop them before logging, counters, media work,
 	// persistence, extraction, or webhook delivery.
 	if info.Chat.String() == "status@broadcast" || strings.HasSuffix(info.Chat.String(), "@broadcast") {
 		return
@@ -1309,7 +1309,7 @@ func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
 		}
 		// Surface the read acknowledgement immediately, before the agent or
 		// database work starts. This is the blue-tick/read signal the owner sees
-		// while PropAI prepares the answer.
+		// while Chariot prepares the answer.
 		readCtx, readCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := s.client.MarkRead(readCtx, []types.MessageID{info.ID}, info.Timestamp, info.Chat, info.Sender); err != nil {
 			log.Printf("[broker %s] self-chat mark read failed for %s: %v", s.brokerID, info.ID, err)
@@ -1425,11 +1425,11 @@ func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
 	// The dedicated extraction worker polls persisted raw messages. Calling the
 	// API once per message is intentionally opt-in: bursts otherwise starve
 	// pairing and auth endpoints even though the raw message is already safe.
-	if strings.EqualFold(getEnv("PROPAI_TRIGGER_EXTRACTION_INLINE", "false"), "true") {
+	if strings.EqualFold(getEnv("CHARIOT_TRIGGER_EXTRACTION_INLINE", "false"), "true") {
 		tenantID, _ := resolveTenantID(sm.db, s.brokerID)
 		go triggerExtraction(rawID, tenantID)
 	}
-	if strings.EqualFold(getEnv("PROPAI_MARK_MESSAGES_READ", "false"), "true") {
+	if strings.EqualFold(getEnv("CHARIOT_MARK_MESSAGES_READ", "false"), "true") {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := s.client.MarkRead(ctx, []types.MessageID{info.ID}, info.Timestamp, info.Chat, info.Sender); err != nil {
@@ -1794,12 +1794,12 @@ func (sm *SessionManager) handleSelfChatCommand(s *BrokerSession, target types.J
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/x-ndjson")
-	token := strings.TrimSpace(os.Getenv("PROPAI_INTERNAL_TOKEN"))
+	token := strings.TrimSpace(os.Getenv("CHARIOT_WHATSAPP_INTERNAL_TOKEN"))
 	if token == "" {
 		token = strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_KEY"))
 	}
 	if token != "" {
-		req.Header.Set("X-PropAI-Internal-Token", token)
+		req.Header.Set("X-Chariot-Internal-Token", token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -1922,7 +1922,7 @@ func (sm *SessionManager) handleSelfChatStream(s *BrokerSession, target types.JI
 			if strings.TrimSpace(evt.Error) != "" && strings.TrimSpace(buffer.String()) == "" {
 				sendCtx, sendCancel := context.WithTimeout(context.Background(), 15*time.Second)
 				_, sendErr := s.client.SendMessage(sendCtx, target, selfChatReplyMessage(
-					"PropAI- • Agent provider rejected this turn; your conversation was not changed. Please retry.",
+					"Chariot • Agent provider rejected this turn; your conversation was not changed. Please retry.",
 					quotedMessageID, target.String(),
 				))
 				sendCancel()
@@ -2159,15 +2159,12 @@ func brokerIDFromRequest(r *http.Request) string {
 }
 
 func internalServiceToken() string {
-	if token := strings.TrimSpace(os.Getenv("PROPAI_INTERNAL_TOKEN")); token != "" {
-		return token
-	}
-	return strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_KEY"))
+	return strings.TrimSpace(os.Getenv("CHARIOT_WHATSAPP_INTERNAL_TOKEN"))
 }
 
 func validInternalRequest(r *http.Request) bool {
 	expected := internalServiceToken()
-	supplied := strings.TrimSpace(r.Header.Get("X-PropAI-Internal-Token"))
+	supplied := strings.TrimSpace(r.Header.Get("X-Chariot-Internal-Token"))
 	return expected != "" && supplied != "" && hmac.Equal([]byte(supplied), []byte(expected))
 }
 
@@ -2551,7 +2548,7 @@ func (sm *SessionManager) resetHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "failed to clear persisted WhatsApp credentials"})
 			return
 		}
-		remoteUnlinkWarning = "WhatsApp did not confirm removal of the old linked device. Remove PropAI in WhatsApp Linked Devices if it is still listed."
+		remoteUnlinkWarning = "WhatsApp did not confirm removal of the old linked device. Remove Chariot in WhatsApp Linked Devices if it is still listed."
 	}
 	mappingCtx, cancelMapping := context.WithTimeout(context.Background(), 8*time.Second)
 	mappingErr := sm.deleteDeviceMapping(mappingCtx, brokerID, "http_reset")
@@ -2959,7 +2956,7 @@ func (sm *SessionManager) capabilitiesHandler(w http.ResponseWriter, r *http.Req
 		{"Group Directory", "active", "Users", "Group metadata: name, participants, admins, and subject changes.", 0, ""},
 		{"Media Download", "active", "Download", "On-demand download of incoming media to workspace storage.", 0, ""},
 		{"Media Upload", "active", "Upload", "Outbound media uploads for sending files, images, and video.", 0, ""},
-		{"Self-Chat Agent", "active", "Bot", "Sends structured replies to your Message Yourself chat so PropAI can act on them.", 0, ""},
+		{"Self-Chat Agent", "active", "Bot", "Sends structured replies to your Message Yourself chat so Chariot can act on them.", 0, ""},
 	}
 
 	typeCounts, lastSeenByType := sm.aggregateByType()
@@ -3193,8 +3190,8 @@ func (sm *SessionManager) historyBackfillHandler(w http.ResponseWriter, r *http.
 		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
-	if token := strings.TrimSpace(os.Getenv("PROPAI_INTERNAL_TOKEN")); token != "" {
-		req.Header.Set("X-PropAI-Internal-Token", token)
+	if token := strings.TrimSpace(os.Getenv("CHARIOT_WHATSAPP_INTERNAL_TOKEN")); token != "" {
+		req.Header.Set("X-Chariot-Internal-Token", token)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -3366,11 +3363,11 @@ func getEnv(key, fallback string) string {
 }
 
 // WhatsApp may replay a large history snapshot after pairing or reconnecting.
-// PropAI keeps live ingestion and explicit group selection as the source of
+// Chariot keeps live ingestion and explicit group selection as the source of
 // new extraction input, so history replay is disabled unless explicitly
 // enabled for a controlled maintenance run.
 func historySyncDisabled() bool {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv("PROPAI_DISABLE_HISTORY_SYNC")))
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("CHARIOT_DISABLE_HISTORY_SYNC")))
 	if value == "" {
 		return true
 	}
@@ -3378,15 +3375,15 @@ func historySyncDisabled() bool {
 }
 
 // selfChatOnlyBroker makes the private WhatsApp control-plane policy explicit
-// and broker-scoped. Other PropAI WhatsApp sessions keep their existing
+// and broker-scoped. Other Chariot WhatsApp sessions keep their existing
 // ingestion behaviour. Configure a comma-separated list, for example:
-// PROPAI_SELF_CHAT_ONLY_BROKERS=phone-2e12a9961676
+// CHARIOT_SELF_CHAT_ONLY_BROKERS=phone-2e12a9961676
 func selfChatOnlyBroker(brokerID string) bool {
 	brokerID = strings.TrimSpace(brokerID)
 	if brokerID == "" {
 		return false
 	}
-	for _, configured := range strings.Split(os.Getenv("PROPAI_SELF_CHAT_ONLY_BROKERS"), ",") {
+	for _, configured := range strings.Split(os.Getenv("CHARIOT_SELF_CHAT_ONLY_BROKERS"), ",") {
 		if strings.TrimSpace(configured) == brokerID {
 			return true
 		}

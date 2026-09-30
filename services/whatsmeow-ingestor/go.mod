@@ -1,4 +1,4 @@
-module github.com/vishalgojha/propai-lab/services/whatsmeow-ingestor
+module github.com/vishalgojha/chariotrealty/services/whatsmeow-ingestor
 
 go 1.25.0
 
