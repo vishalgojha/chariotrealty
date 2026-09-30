@@ -17,10 +17,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unsupported category", supported: supportedCategories }, { status: 400 });
   }
 
-  const { properties: all, degraded, reason } = await readInventory();
+  const { properties: all, degraded } = await readInventory();
   if (degraded) {
     return NextResponse.json(
-      { error: "Listings are temporarily unavailable. Please try again shortly.", degraded: true, detail: reason },
+      { error: "Listings are temporarily unavailable. Please try again shortly.", degraded: true },
       { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "120" } },
     );
   }
