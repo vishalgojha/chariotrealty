@@ -541,6 +541,23 @@ function noRow(message: string): string {
 }
 
 async function createListing(args: Record<string, unknown>): Promise<string> {
+  // Ground dictation in Kapil's own words. He may say "save the 3 BHK I just
+  // described", so a few recent turns are checked, but a building or area that
+  // he never said is a sign the model invented it, and is not saved.
+  const spoken = String(args.__spoken_text || "");
+  if (spoken) {
+    for (const key of ["name", "locality"]) {
+      const value = args[key];
+      if (typeof value === "string" && value.trim() && !isGroundedIn(value, spoken)) {
+        return noRow(
+          `I did not save this because "${value.trim()}" is not in what you said. ` +
+            `You said: "${spoken.replace(/\s+/g, " ").slice(0, 400)}". ` +
+            `Say the building and area again and I will save it exactly as you describe.`,
+        );
+      }
+    }
+  }
+
   const name = String(args.name || "").trim();
   const locality = String(args.locality || "").trim();
   if (!name || !locality) return noRow("Listing needs at least a name and a locality.");
@@ -575,8 +592,24 @@ async function createListing(args: Record<string, unknown>): Promise<string> {
     payload.area_raw_text = `${args.carpet_area_sqft} sqft`;
   }
   if (transaction === "rent") {
-    if (typeof args.monthly_rent === "number") payload.monthly_rent = args.monthly_rent;
+    if (typeof args.total_asking_price === "number" && typeof args.monthly_rent !== "number") {
+      return noRow(
+        `This was saved as a rent listing but was given a sale price (${args.total_asking_price}). ` +
+          `Give the monthly rent, or tell me it is a sale, and I will save it correctly.`,
+      );
+    }
+    if (typeof args.monthly_rent === "number") {
+      if (!(args.monthly_rent > 0)) return noRow("A monthly rent has to be a positive amount.");
+      payload.monthly_rent = args.monthly_rent;
+    }
   } else if (typeof args.total_asking_price === "number") {
+    if (typeof args.monthly_rent === "number") {
+      return noRow(
+        `This was saved as a sale listing but was given a monthly rent (${args.monthly_rent}). ` +
+          `Give the asking price, or tell me it is a rent, and I will save it correctly.`,
+      );
+    }
+    if (!(args.total_asking_price > 0)) return noRow("An asking price has to be a positive amount.");
     payload.total_asking_price = args.total_asking_price;
   }
   if (args.price_raw_text) payload.price_raw_text = String(args.price_raw_text);
@@ -633,7 +666,7 @@ function isGroundedIn(value: string, sourceText: string): boolean {
 // Sale vs rent is decided by the message, not by the model, so a rent listing
 // can never be filed into the sale table.
 function inferTransaction(sourceText: string): "rent" | "sale" {
-  return /\b(lease|leased|on rent|rented|monthly rent|per month|rent pm)\b/i.test(sourceText) ? "rent" : "sale";
+  return /\b(lease|leased|on rent|rented|monthly rent|per month|rent pm|leave and licence|licence fee)\b/i.test(sourceText) ? "rent" : "sale";
 }
 
 function inferCategory(sourceText: string): "residential" | "commercial" {
@@ -671,7 +704,7 @@ function deriveFieldsFromText(sourceText: string): Record<string, unknown> {
   const parking = text.match(/(\d+)[^\n]{0,20}?\bcar\s*parks?\b/i);
   if (parking) derived.car_parking_count = Number(parking[1]);
 
-  const rent = text.match(/(?:rs\.?|₹|inr)?\s*(\d+(?:\.\d+)?)\s*(lakh|lacs|lac|crore|cr|thousand)?\s*(?:\/|\s+per\s*)\s*(?:month|monthly|mo\b)/i);
+  const rent = text.match(/(?:rs\.?|₹|inr)?\s*(\d+(?:\.\d+)?)\s*(lakh|lacs|lac|l(?:akh)?|crore|cr|k|thousand)?\s*(?:\/|\s+per\s*|\s+a\s+)?\s*[-/]?\s*(?:month|monthly|mo\b|pm\b)/i);
   if (rent) {
     const amount = Number(rent[1]);
     const unit = (rent[2] || "").toLowerCase();
@@ -697,7 +730,19 @@ function deriveIdentityFromText(sourceText: string): { name?: string; locality?:
   }
   if (!identity.locality) {
     const area = sourceText.match(/\b(?:in|at)\s+([A-Za-z][A-Za-z.]*(?:\s+[A-Za-z][A-Za-z.]*){0,2})/);
-    if (area) identity.locality = clean(area[1]);
+    if (area) {
+      // Keep only the proper-noun part, so "Khar West near station" gives
+      // "Khar West" rather than "Khar West near".
+      const words = clean(area[1]).split(" ").filter(Boolean);
+      while (words.length > 1) {
+        const last = words[words.length - 1];
+        const filler = /^(near|and|with|by|for|opposite|behind|next|to|from|the|a|of|rent|sale|lease|available|only)$/i.test(last);
+        if (!filler && last[0] === last[0].toUpperCase()) break;
+        words.pop();
+      }
+      const place = words.join(" ");
+      if (place) identity.locality = place;
+    }
   }
   if (!identity.name) {
     const heading = clean(sourceText.split("\n").find(Boolean) || "")
@@ -907,8 +952,9 @@ async function restDelete(filter: string, table: string) {
   }
 }
 
-async function runTool(name: string, rawArgs: string): Promise<string> {
+async function runTool(name: string, rawArgs: string, spokenText = ""): Promise<string> {
   const args = JSON.parse(rawArgs) as Record<string, unknown>;
+  if (spokenText) args.__spoken_text = spokenText;
   switch (name) {
     case "search_listings":
       return searchListings(args as SearchArgs);
@@ -1080,10 +1126,14 @@ const EXTRACT_INTENT = /\b(extract|turn\b[^.]{0,40}?\binto a listing|convert\b[^
 
 // The id of the raw message Kapil named, if he named one.
 function explicitMessageId(text: string): number | undefined {
-  const match = text.match(/\b(?:id|message|msg)\s*#?\s*(\d{1,12})\b/i);
-  if (!match) return undefined;
-  const id = Number(match[1]);
-  return Number.isFinite(id) && id > 0 ? id : undefined;
+  const marked = text.match(/\b(?:id|message|msg)\s*#?\s*(\d{1,12})\b/i) || text.match(/#\s*(\d{1,12})\b/);
+  if (marked) return Number(marked[1]) > 0 ? Number(marked[1]) : undefined;
+
+  // A bare number is only a message id when it is long and is not a price or a
+  // measurement. "extract 35798" is a message; "save 3 BHK for 85000" is not.
+  const bare = text.match(/(\d{4,12})\b(?!\s*(?:lakh|lac|crore|rs|inr|₹|sq\.?ft|bhk|car|lakh\/month|pm)\b)/i);
+  if (bare) return Number(bare[1]) > 0 ? Number(bare[1]) : undefined;
+  return undefined;
 }
 
 function forcedToolFor(text: string): string | undefined {
@@ -1194,6 +1244,8 @@ function toToolCalls(parsed: unknown, expectedTool: string): SarvamToolCall[] {
 
 async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHooks): Promise<{ reply: string }> {
   const messages = [{ role: "system" as const, content: BUSINESS_RULES }, ...buildMessages(text, history)];
+  // Kapil's own words, for checking that a dictated listing is what he said.
+  const spokenContext = [text, ...history.filter((turn) => turn.role === "user").map((turn) => turn.text)].join(" ");
   let forcedTool = forcedToolFor(text);
 
   // A request that names a raw message is extracted here rather than left to the
@@ -1264,7 +1316,7 @@ async function runAgent(text: string, history: AgentMessage[], hooks?: AgentHook
       messages.push({ role: "assistant", content: null, tool_calls: calls });
       for (const call of calls) {
         try {
-          const result = await runTool(call.function.name, call.function.arguments || "{}");
+          const result = await runTool(call.function.name, call.function.arguments || "{}", spokenContext);
           messages.push({ role: "tool", content: result, tool_call_id: call.id });
         } catch (error) {
           messages.push({ role: "tool", content: JSON.stringify({ error: error instanceof Error ? error.message : "Tool failed" }), tool_call_id: call.id });
