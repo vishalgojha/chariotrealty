@@ -855,7 +855,13 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
   })) as Record<string, unknown>;
   if (created.error) return JSON.stringify(created);
 
-  return JSON.stringify({ ...created, raw_message_id: rawMessageId, source: "whatsapp", extracted_from: sourceLabel, source_text: sourceText, review: "Private draft. Review it in the admin Inventory tab before publishing." });
+  // Silent correction is how wrong data survives review, so anything the model
+  // had to discard is reported back for it to raise with the user.
+  const discarded = ungrounded.length
+    ? ` I ignored ${ungrounded.join(", ")}, because the message does not say it; ask the customer to confirm before saving.`
+    : "";
+
+  return JSON.stringify({ ...created, raw_message_id: rawMessageId, source: "whatsapp", extracted_from: sourceLabel, source_text: sourceText, discarded_ungrounded_fields: ungrounded, review: `Private draft. Review it in the admin Inventory tab before publishing.${discarded}` });
 }
 
 async function updateListing(args: Record<string, unknown>): Promise<string> {
