@@ -3,7 +3,7 @@
 import { FormEvent, ChangeEvent, useCallback, useEffect, useState } from "react";
 import { readJson } from "../lib/api";
 import { readStoredSession } from "../lib/session";
-import type { CmsField, CmsProperty, CmsFieldType } from "../lib/types";
+import type { CmsField, CmsProperty, CmsFieldType, TypedDraft } from "../lib/types";
 import { FIELD_TYPE_OPTIONS } from "../lib/types";
 import type { AdminApi } from "../hooks/use-admin-auth";
 import { Note, Panel, PanelHead, Pill } from "./ui";
@@ -46,14 +46,22 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [typedDrafts, setTypedDrafts] = useState<TypedDraft[]>([]);
 
   const loadAll = useCallback(async () => {
-    const [inventoryResponse, fieldsResponse] = await Promise.all([api.get("/api/inventory?admin=1"), api.get("/api/inventory/fields")]);
+    const [inventoryResponse, fieldsResponse, draftsResponse] = await Promise.all([
+      api.get("/api/inventory?admin=1"),
+      api.get("/api/inventory/fields"),
+      api.get("/api/inventory/drafts"),
+    ]);
     const payload = await readJson(inventoryResponse);
     const fieldsPayload = await readJson(fieldsResponse);
+    const draftsPayload = await readJson(draftsResponse);
     if (!inventoryResponse.ok) setError(payload.error || "Could not load CMS inventory");
     setProperties(payload.data || []);
     setFields(fieldsPayload.data || []);
+    const groups = (draftsPayload.data || []) as Array<{ table: string; drafts: TypedDraft[] }>;
+    setTypedDrafts(groups.flatMap((group) => group.drafts || []));
     setLoaded(true);
   }, [api]);
 
@@ -182,6 +190,31 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     }
   }
 
+  // A dictated or WhatsApp draft lives in the typed listing tables, not in
+  // the CMS table this tab edits, so publishing it copies it across first.
+  async function publishTypedDraft(draftItem: TypedDraft) {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await api.post("/api/inventory/drafts/publish", { table: draftItem.table, id: draftItem.id, publish: true });
+      const payload = await readJson(response);
+      if (!response.ok) throw new Error(payload.error || "Could not publish the draft");
+      setTypedDrafts((items) =>
+        items.map((item) =>
+          item.table === draftItem.table && item.id === draftItem.id
+            ? { ...item, published_status: "published", published_slug: payload.data?.slug || "" }
+            : item,
+        ),
+      );
+      notify("Published to the website");
+      await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not publish the draft");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function setCustomValue(key: string, type: CmsFieldType, raw: string) {
     if (type === "number") setCustomValues((values) => ({ ...values, [key]: raw === "" ? "" : Number(raw) }));
     else if (type === "boolean") setCustomValues((values) => ({ ...values, [key]: raw === "true" }));
@@ -190,8 +223,35 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
 
   const patch = (next: Partial<typeof form>) => setForm((current) => ({ ...current, ...next }));
 
+  const unpublishedDrafts = typedDrafts.filter((item) => item.published_status !== "published");
+
   return (
     <div className="tab-stack">
+      <Panel>
+        <PanelHead
+          eyebrow="From the Assistant"
+          title="Drafts to review"
+          subtitle="Property dictated in the Assistant or picked up from WhatsApp. Publishing copies it into your inventory, where you can still edit it before it goes live."
+        />
+        {!unpublishedDrafts.length ? (
+          <p className="empty-state">Nothing waiting. Anything you dictate in the Assistant appears here to review.</p>
+        ) : (
+          <div className="row-list">
+            {unpublishedDrafts.map((item) => (
+              <div className="row-item" key={`${item.table}-${item.id}`}>
+                <div className="row-main">
+                  <strong>{item.name || `Draft ${item.id}`}</strong>
+                  <small>{[item.configuration, item.locality, item.price].filter(Boolean).join(" · ") || "No detail yet"}</small>
+                </div>
+                {item.published_status ? <span className="pill pill-draft">{item.published_status}</span> : null}
+                <button className="btn btn-dark btn-sm" disabled={busy} onClick={() => publishTypedDraft(item)}>
+                  Publish
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
       <Panel>
         <PanelHead
           eyebrow="Chariot CMS"

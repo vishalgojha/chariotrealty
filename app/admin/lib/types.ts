@@ -89,3 +89,18 @@ export const FIELD_TYPE_LABELS: Record<CmsFieldType, string> = {
 export const FIELD_TYPE_OPTIONS = Object.entries(FIELD_TYPE_LABELS).map(([value, label]) => ({ value: value as CmsFieldType, label }));
 
 export type TabId = "overview" | "whatsapp" | "inventory" | "leads" | "agent" | "markets";
+
+// A draft that lives in one of the typed listing tables, which is where
+// WhatsApp extraction and dictation save new listings.
+export type TypedDraft = {
+  table: string;
+  id: number;
+  name: string;
+  locality: string;
+  configuration: string;
+  price: string;
+  source: string;
+  created_at: string;
+  published_slug: string | null;
+  published_status: string | null;
+};
