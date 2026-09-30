@@ -155,8 +155,11 @@ export async function materializeDraft(table: DraftTable, id: number) {
 export async function listDrafts() {
   const results = await Promise.all(
     DRAFT_TABLES.map(async (table) => {
-      const response = await postgrest(`${TABLES[table]}?select=id,summary_title,building_name,locality_raw,locality_resolved,configuration_type,status,source,monthly_rent,total_asking_price,created_at&order=created_at.desc&limit=50`, { method: "GET" });
-      if (!response.ok) return { table, drafts: [], error: "could not read" };
+      const response = await postgrest(`${TABLES[table]}?select=*&order=created_at.desc&limit=50`, { method: "GET" });
+      if (!response.ok) {
+        const detail = ((await response.json().catch(() => ({}))) as { message?: string }).message;
+        return { table, drafts: [], error: detail || `read failed with status ${response.status}` };
+      }
       const rows = (await response.json().catch(() => [])) as Record<string, unknown>[];
       return {
         table,
