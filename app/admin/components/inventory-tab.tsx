@@ -91,8 +91,12 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     setBusy(true);
     setError("");
     try {
+      // A new form starts with id: "", and sending that to a uuid column made
+      // every Save draft fail. The server also drops unset uuid columns, but
+      // the request should not claim to be creating a row with an id.
       const body = {
         ...form,
+        ...(editing && form.id ? { id: form.id } : {}),
         custom_fields: customValues,
         carpet_area_sqft: form.carpet_area_sqft ? Number(form.carpet_area_sqft) : null,
       };
