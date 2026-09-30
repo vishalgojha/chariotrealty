@@ -19,10 +19,11 @@ export type DraftTable = keyof typeof TABLES;
 
 export const DRAFT_TABLES = Object.keys(TABLES) as DraftTable[];
 
-// Only these names may reach a PostgREST URL, so a caller cannot pick an
-// arbitrary table.
-export function resolveTable(name: unknown): string | null {
-  return typeof name === "string" && name in TABLES ? TABLES[name as DraftTable] : null;
+// Only these keys may reach a PostgREST URL, so a caller cannot pick an
+// arbitrary table. Returns the key rather than the table name, because
+// materializeDraft and listDrafts both index TABLES by it.
+export function resolveTable(name: unknown): DraftTable | null {
+  return typeof name === "string" && name in TABLES ? (name as DraftTable) : null;
 }
 
 function db() {

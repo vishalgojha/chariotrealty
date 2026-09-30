@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "A valid draft id is required" }, { status: 400 });
 
   try {
-    const { created, property } = await materializeDraft(table as DraftTable, id);
+    const { created, property } = await materializeDraft(table, id);
     if (body.publish === true) {
       const published = await fetch(
         `${(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "")}/rest/v1/chariot_properties?id=eq.${encodeURIComponent(String((property as Record<string, unknown>)?.id || ""))}`,
