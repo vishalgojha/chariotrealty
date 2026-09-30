@@ -9,4 +9,5 @@ node_modules
 .agents
 .codex
 tsconfig.tsbuildinfo
-supabase/.templib/build-info.generated.ts
+supabase/.temp/
+lib/build-info.generated.ts

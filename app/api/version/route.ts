@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { BUILD_SHA } from "@/lib/build-info.generated";
+import { BUILD_SHA, BUILD_FINGERPRINT } from "@/lib/build-info.generated";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // rolling out can be told apart from a genuine bug.
 export async function GET() {
   return NextResponse.json(
-    { build: BUILD_SHA, deployed_at: new Date().toISOString() },
+    { build: BUILD_SHA, fingerprint: BUILD_FINGERPRINT, deployed_at: new Date().toISOString() },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
