@@ -72,6 +72,16 @@ function textOf(value: unknown): string {
   return String(value);
 }
 
+// The site stores the price as a display string, matching the existing rows:
+// "₹3.00L / mo" for rent and "From ₹4.25 Cr" for sale. Publishing a raw
+// number rendered as 600000 on the property page.
+export function formatDisplayPrice(value: number | null, transaction: "rent" | "sale", raw: string): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return raw;
+  if (transaction === "rent") return `₹${(value / 100000).toFixed(2)}L / mo`;
+  if (value >= 10000000) return `From ₹${(value / 10000000).toFixed(2)} Cr`;
+  return `From ₹${(value / 100000).toFixed(2)}L`;
+}
+
 // A typed row has to be reshaped into the display columns the public site and
 // the property page actually read.
 function toPublicProperty(table: DraftTable, row: Record<string, unknown>, slug: string) {
@@ -83,7 +93,8 @@ function toPublicProperty(table: DraftTable, row: Record<string, unknown>, slug:
   const priceRaw = String(row.price_raw_text || "").trim();
   const rent = row.monthly_rent == null ? null : Number(row.monthly_rent);
   const asking = row.total_asking_price == null ? null : Number(row.total_asking_price);
-  const priceValue = transaction === "rent" ? rent : asking ?? row.price_value;
+  const fallbackPrice = row.price_value == null ? null : Number(row.price_value);
+  const priceValue = transaction === "rent" ? rent : asking ?? fallbackPrice;
 
   // Only columns that actually exist on chariot_properties may be written:
   // PostgREST rejects the whole insert if one is unknown, which is how a
@@ -100,9 +111,9 @@ function toPublicProperty(table: DraftTable, row: Record<string, unknown>, slug:
     category,
     configuration: String(row.configuration_type || "").trim(),
     carpet_area_sqft: row.carpet_area_sqft ?? null,
-    price: priceRaw || (priceValue == null ? "" : String(priceValue)),
+    price: formatDisplayPrice(priceValue, transaction, priceRaw),
     price_value: priceValue ?? null,
-    price_unit: transaction === "rent" ? "per_month" : "total",
+    price_unit: transaction === "rent" ? "monthly_rent" : "total_price",
     custom_fields: customFields,
     locality,
     micro_market: String(row.micro_market || "").trim(),
