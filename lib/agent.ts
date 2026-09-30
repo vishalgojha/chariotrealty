@@ -582,6 +582,7 @@ async function createListing(args: Record<string, unknown>): Promise<string> {
   if (args.price_raw_text) payload.price_raw_text = String(args.price_raw_text);
   if (args.furnishing_status) payload.furnishing_status = String(args.furnishing_status);
   if (args.possession_status) payload.possession_status = String(args.possession_status);
+  if (typeof args.built_up_area_sqft === "number") payload.built_up_area_sqft = args.built_up_area_sqft;
   if (typeof args.car_parking_count === "number") payload.car_parking_count = args.car_parking_count;
   if (args.description) payload.broker_notes = [{ note: String(args.description) }];
 
@@ -648,7 +649,10 @@ function deriveFieldsFromText(sourceText: string): Record<string, unknown> {
   const text = sourceText.replace(/,/g, "");
 
   const bhk = text.match(/(\d+)\s*BHK\b/i);
-  if (bhk) derived.bhk = Number(bhk[1]);
+  if (bhk) {
+    derived.bhk = Number(bhk[1]);
+    derived.configuration_type = `${Number(bhk[1])} BHK`;
+  }
 
   if (/\bfully furnished\b|\bfurnished\b/i.test(sourceText) && !/\bunfurnished\b|\bsemi[- ]?furnished\b/i.test(sourceText)) {
     derived.furnishing_status = "Furnished";
@@ -664,7 +668,7 @@ function deriveFieldsFromText(sourceText: string): Record<string, unknown> {
   const builtUp = text.match(/(\d+)\s*sq\.?\s*ft\.?\s*(?:of\s*)?built[\s-]?up/i);
   if (builtUp) derived.built_up_area_sqft = Number(builtUp[1]);
 
-  const parking = text.match(/(\d+)\s*car\s*park/i);
+  const parking = text.match(/(\d+)[^\n]{0,20}?\bcar\s*parks?\b/i);
   if (parking) derived.car_parking_count = Number(parking[1]);
 
   const rent = text.match(/(?:rs\.?|₹|inr)?\s*(\d+(?:\.\d+)?)\s*(lakh|lacs|lac|crore|cr|thousand)?\s*(?:\/|\s+per\s*)\s*(?:month|monthly|mo\b)/i);
