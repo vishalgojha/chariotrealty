@@ -58,6 +58,11 @@ export type CmsProperty = {
   media_type?: "image" | "video";
   custom_fields?: Record<string, string | number | boolean>;
   status: string;
+  // Internal provenance. A parsed listing keeps the message it came from in
+  // description, so both of these stay admin-only and are never published.
+  source?: string | null;
+  source_reference?: string | null;
+  description?: string | null;
 };
 
 export type WhatsappStatus = {
@@ -76,6 +81,23 @@ export const CATEGORY_LABELS: Record<string, string> = {
   commercial: "Commercial",
   "under-construction": "New launch",
 };
+
+// Where a listing came from, in the words we would say out loud. The stored
+// value is kept verbatim in the database; this is only for display.
+const SOURCE_LABELS: Record<string, string> = {
+  whatsapp: "WhatsApp message",
+  agent: "Chariot Assistant",
+  chariot_admin: "Added by us",
+  dictation: "Dictated in the Assistant",
+  manual: "Entered by hand",
+  website: "Website enquiry",
+};
+
+export function sourceLabel(source?: string | null): string {
+  const key = (source || "").trim().toLowerCase();
+  if (!key) return "Not recorded";
+  return SOURCE_LABELS[key] ?? key.replace(/[_-]+/g, " ");
+}
 
 export const FIELD_TYPE_LABELS: Record<CmsFieldType, string> = {
   text: "Text",

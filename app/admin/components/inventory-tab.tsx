@@ -4,7 +4,7 @@ import { FormEvent, ChangeEvent, useCallback, useEffect, useState } from "react"
 import { readJson } from "../lib/api";
 import { readStoredSession } from "../lib/session";
 import type { CmsField, CmsProperty, CmsFieldType, TypedDraft } from "../lib/types";
-import { FIELD_TYPE_OPTIONS } from "../lib/types";
+import { FIELD_TYPE_OPTIONS, sourceLabel } from "../lib/types";
 import type { AdminApi } from "../hooks/use-admin-auth";
 import { Note, Panel, PanelHead, Pill } from "./ui";
 import type { Notify } from "./whatsapp-tab";
@@ -228,6 +228,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   const patch = (next: Partial<typeof form>) => setForm((current) => ({ ...current, ...next }));
 
   const unpublishedDrafts = typedDrafts.filter((item) => item.published_status !== "published");
+  const editingProperty = editing ? properties.find((item) => item.id === form.id) : undefined;
 
   return (
     <div className="tab-stack">
@@ -422,6 +423,26 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
         </form>
 
         {editing && <Note tone="success">Editing this draft. Changes are saved on “Save changes” — the website only changes when it is published.</Note>}
+
+        {/* Who the listing came from. A parsed listing still holds the message it
+            was extracted from, so it is shown here and kept off the website. */}
+        {editingProperty && (
+          <label className="field">
+            <span>Listing source — internal only, never published</span>
+            <textarea
+              className="textarea"
+              rows={3}
+              readOnly
+              value={[
+                `Supplied via ${sourceLabel(editingProperty.source)}${editingProperty.source_reference ? ` · ${editingProperty.source_reference}` : ""}`,
+                editingProperty.description?.trim() || "",
+              ]
+                .filter(Boolean)
+                .join("\n\n")}
+            />
+          </label>
+        )}
+
         {error && <Note tone="error">{error}</Note>}
       </Panel>
 
@@ -436,7 +457,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
                 {property.image_url && (property.media_type === "video" ? <video src={property.image_url} muted playsInline /> : <img src={property.image_url} alt="" />)}
                 <div className="row-main">
                   <strong>{property.name}</strong>
-                  <small>{property.location}{property.price ? ` · ${property.price}` : ""}</small>
+                  <small>{property.location}{property.price ? ` · ${property.price}` : ""}{property.source ? ` · via ${sourceLabel(property.source)}` : ""}</small>
                 </div>
                 <Pill tone={property.status === "published" ? "live" : "draft"}>{property.status}</Pill>
                 <button type="button" className="btn btn-light btn-sm" onClick={() => startEdit(property)}>Edit</button>

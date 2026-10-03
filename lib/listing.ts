@@ -95,7 +95,6 @@ export type Listing = {
   waMessage: string;
   mediaLinks: ListingMediaLink[];
   specsLine: string;
-  highlight?: string;
 };
 
 export function waLink(message: string): string {
@@ -112,10 +111,47 @@ function listingMedia(row: ChariotProperty): ListingMedia[] {
   return unique.map((url) => ({ url, type: (row.mediaType ?? "image") as "image" | "video" }));
 }
 
+// A parsed listing is still attached to the message it came from, and that
+// message carries the sender's name, phone number, group name and timestamp.
+// None of that belongs on a public page, so any text coming out of a parsed
+// field is checked before a visitor can see it. Structured columns are trusted;
+// free text from the source message is not.
+const CONTACT_PATTERN = /(?:\+?\d[\d\s().-]{7,}\d)|(?:[\w.+-]+@[\w-]+\.[\w.]+)|(?:wa\.me\/\d+)/i;
+
+export function containsSourceContact(value: string): boolean {
+  return CONTACT_PATTERN.test(value);
+}
+
+export function publicTextList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0 && !containsSourceContact(item));
+}
+
+const PUBLIC_LIST_KEYS = ["amenities", "unit_amenities", "building_amenities"] as const;
+const PUBLIC_URL_KEYS = ["reel_url", "instagram_reel_url", "drive_url", "drive_photos_url"] as const;
+
+// Everything the public API is allowed to echo back from custom_fields. Anything
+// not on this list stays server-side, so a new parsed field cannot quietly start
+// publishing broker contact details.
+export function publicCustomFields(row: ChariotProperty): Record<string, unknown> | undefined {
+  const fields = row.customFields;
+  if (!fields) return undefined;
+  const safe: Record<string, unknown> = {};
+  for (const key of PUBLIC_LIST_KEYS) {
+    const list = publicTextList(fields[key]);
+    if (list.length) safe[key] = list;
+  }
+  for (const key of PUBLIC_URL_KEYS) {
+    const value = fields[key];
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) safe[key] = value;
+  }
+  return Object.keys(safe).length ? safe : undefined;
+}
+
 function customList(row: ChariotProperty, keys: string[]): string[] {
   for (const key of keys) {
-    const value = row.customFields?.[key];
-    if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    const list = publicTextList(row.customFields?.[key]);
+    if (list.length) return list;
   }
   return [];
 }
@@ -128,18 +164,7 @@ function customUrl(row: ChariotProperty, keys: string[]): string | undefined {
   return undefined;
 }
 
-function customText(row: ChariotProperty, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = row.customFields?.[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
 export function listingDescription(row: ChariotProperty): string {
-  const stored = row.description?.trim() || customText(row, ["ai_description", "seo_description"]);
-  if (stored) return stored;
-
   const price = priceParts(row);
   const facts = [
     row.configuration,
@@ -185,10 +210,9 @@ export function toListing(row: ChariotProperty): Listing {
   else if (driveUrl) mediaLinks.push({ label: "Google Drive Photos", href: driveUrl });
 
   const priceText = `${price.price}${price.note ? ` ${price.note}` : ""}`;
-  const specsLine = customText(row, ["specs_line", "specifications"]) ||
-    [row.carpetAreaSqft ? `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft` : "", customText(row, ["beds", "bedrooms"]), customText(row, ["baths", "bathrooms"])]
-      .filter(Boolean)
-      .join(" • ");
+  const specsLine = [row.configuration, row.carpetAreaSqft ? `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft` : ""]
+    .filter(Boolean)
+    .join(" • ");
 
   return {
     slug: row.slug,
@@ -215,7 +239,6 @@ export function toListing(row: ChariotProperty): Listing {
     waMessage: `Hi Kapil, I'm interested in ${row.name} (${area || row.locality}, ${priceText}).`,
     mediaLinks,
     specsLine,
-    highlight: customText(row, ["highlight", "highlight_line", "one_line_highlight"]),
   };
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mumbaiProperties, normalizeSearch, type PropertyCategory } from "@/lib/mumbai";
+import { normalizeSearch, type PropertyCategory } from "@/lib/mumbai";
 import { readInventory } from "@/lib/inventory";
+import { listingDescription, publicCustomFields } from "@/lib/listing";
 
 const supportedCategories: PropertyCategory[] = ["residential", "commercial", "under-construction"];
 const categories = new Set<PropertyCategory>(supportedCategories);
@@ -31,11 +32,20 @@ export async function GET(request: NextRequest) {
     return (!category || property.category === category) && localityMatch && configMatch && property.carpetAreaSqft >= minCarpet && property.carpetAreaSqft <= maxCarpet;
   });
 
+  // The stored row is an internal record, not a public document. The source
+  // message it was parsed from can name the broker and their number, so the
+  // public payload is rebuilt from structured fields and an allowlist of
+  // custom_fields. Anything not on that allowlist never leaves the server.
+  const publicProperties = properties.map((property) => {
+    const { description: _description, source: _source, customFields: _customFields, ...safeProperty } = property;
+    return { ...safeProperty, description: listingDescription(property), customFields: publicCustomFields(property) };
+  });
+
   return NextResponse.json({
     city: "Mumbai",
     market: "Bandra · BKC · Western Suburbs",
     count: properties.length,
     filters: { category: category || null, locality: locality || null, configuration: configuration || null, minCarpet, maxCarpet: maxCarpet === Number.MAX_SAFE_INTEGER ? null : maxCarpet },
-    data: properties,
+    data: publicProperties,
   }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,4 +1,5 @@
 import type { ChariotProperty } from "@/lib/inventory";
+import { listingDescription } from "@/lib/listing";
 import type { Neighborhood, NeighborhoodFAQ } from "@/lib/neighborhoods";
 
 export type JsonLd = Record<string, unknown>;
@@ -129,7 +130,9 @@ export function listingJsonLd(p: ChariotProperty): JsonLd[] {
     "@type": ["Apartment", "RealEstateListing", "Product"],
     "@id": `${url}#listing`,
     name,
-    description: p.description ?? `${p.name} — ${p.configuration ?? "residential"} in ${p.locality ?? p.location}, Mumbai. Available through Chariot Realty.`,
+    // Never the stored description: a parsed listing still carries the WhatsApp
+    // message it came from, including the sender's name and phone number.
+    description: listingDescription(p),
     url,
     image: p.image ? [p.image, LOGO] : [LOGO],
     location: {
