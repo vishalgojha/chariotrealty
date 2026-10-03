@@ -583,9 +583,12 @@ img{max-width:100%;display:block}
 .featured-dots button{width:5px;height:5px;padding:0;border:0;border-radius:999px;background:rgba(255,255,255,.55);cursor:pointer}
 .featured-dots button.active{width:16px;background:var(--gold)}
 .listing-grid{grid-template-columns:1fr;gap:16px}
-.listing-media{aspect-ratio:16/10}
+.listing-media{height:180px;aspect-ratio:auto}
 .listing-price{color:var(--gold-2)}
 .listing-specs{font-size:12px;color:var(--grey);margin:2px 0 0}
 .listing-foot:empty{display:none}
+.listing-foot{align-items:center;gap:8px;flex-wrap:wrap}
+.listing-detail-link{position:relative;z-index:1;color:var(--navy);font-size:12px;font-weight:700;margin-right:auto}
+.listing-detail-link span{color:var(--gold-2);font-size:15px}
 .view-all{margin:18px 0 8px}
 @media(min-width:768px){.shell.public-shell{max-width:480px;padding-left:16px;padding-right:16px}.topnav{display:none}}
