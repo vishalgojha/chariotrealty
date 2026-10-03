@@ -593,6 +593,11 @@ img{max-width:100%;display:block}
 .detail-desktop-header{display:none}
 @media(min-width:768px){
   .detail-desktop-header{display:block}
+  /* Above 768px the full .topbar is already on screen. Keep only the back
+     button from the compact bar; its logo and WhatsApp pill would otherwise
+     repeat the two the header already shows. */
+  .detail-brief-top{display:flex;padding:16px 0 4px}
+  .detail-brand,.detail-brief-wa{display:none}
   .detail-shell{max-width:1080px;padding-left:32px;padding-right:32px;padding-bottom:24px}
   .detail-gallery{margin:0 -32px;aspect-ratio:16/10}
   .detail-title-block h1{font-size:32px}

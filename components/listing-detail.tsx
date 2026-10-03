@@ -52,9 +52,9 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
           <ArrowLeftIcon size={16} />
         </button>
         <a className="detail-brand" href="/" aria-label="Chariot Realty home">
-          <img src="/apple-touch-icon.png" alt="Chariot Realty" />
+          <img src="/apple-touch-icon.png" alt="" />
         </a>
-        <a className="pill pill-dark pill-sm" href={waLink(listing.waMessage)} target="_blank" rel="noreferrer">
+        <a className="pill pill-dark pill-sm detail-brief-wa" href={waLink(listing.waMessage)} target="_blank" rel="noreferrer">
           <WhatsAppIcon size={14} /> WhatsApp
         </a>
       </div>

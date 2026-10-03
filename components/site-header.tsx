@@ -8,9 +8,9 @@ export function SiteHeader() {
     <header className="topbar">
       <div className="shell public-shell topbar-inner">
         <a className="brand" href="/">
-          <span className="brand-logo">
-            <img src="/apple-touch-icon.png" alt="Chariot Realty" />
-          </span>
+<span className="brand-logo">
+              <img src="/apple-touch-icon.png" alt="" />
+            </span>
           <span>
             <span className="brand-name">
               Chariot <span>Realty</span>
