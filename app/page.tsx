@@ -131,8 +131,8 @@ export default function Home() {
           <div className="section">
             <div className="section-head">
               <div>
-                <p className="kicker">Handpicked Mumbai homes &amp; spaces</p>
-                <h2>Available Properties</h2>
+                <p className="kicker">Curated homes, rentals &amp; workspaces</p>
+                <h2>Find your next address</h2>
               </div>
             </div>
           </div>

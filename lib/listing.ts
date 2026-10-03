@@ -136,6 +136,23 @@ function customText(row: ChariotProperty, keys: string[]): string | undefined {
   return undefined;
 }
 
+export function listingDescription(row: ChariotProperty): string {
+  const stored = row.description?.trim() || customText(row, ["ai_description", "seo_description"]);
+  if (stored) return stored;
+
+  const price = priceParts(row);
+  const facts = [
+    row.configuration,
+    row.carpetAreaSqft ? `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft carpet area` : undefined,
+    row.parking ? `${row.parking} covered parking ${row.parking === 1 ? "space" : "spaces"}` : undefined,
+  ].filter(Boolean);
+  const location = [row.locality, row.microMarket].filter(Boolean).join(" · ");
+  const sentence = facts.length ? `${row.name} is a ${facts.join(", ")} property in ${location || "Mumbai"}.` : `${row.name} is a property in ${location || "Mumbai"}.`;
+  const pricing = price.price ? ` It is listed at ${price.price}${price.note ? ` ${price.note}` : ""}.` : "";
+  const status = row.possession ? ` Possession: ${row.possession}.` : row.reraApproved ? " RERA approved." : "";
+  return `${sentence}${pricing}${status}`;
+}
+
 export function toListing(row: ChariotProperty): Listing {
   const price = priceParts(row);
   const area = areaChip(row);
@@ -189,7 +206,7 @@ export function toListing(row: ChariotProperty): Listing {
     media: listingMedia(row),
     facts,
     amenities,
-    description: row.description,
+    description: listingDescription(row),
     priceValue: Number(row.priceValue || 0),
     priceUnit: (row.priceUnit || "total_price") as PriceUnit,
     carpetAreaSqft: Number(row.carpetAreaSqft || 0),

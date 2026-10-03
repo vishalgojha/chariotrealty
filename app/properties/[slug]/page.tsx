@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { canonical, listingJsonLd } from "@/lib/seo";
 import { readInventory } from "@/lib/inventory";
 import { ListingDetail } from "@/components/listing-detail";
-import { toListing, waLink } from "@/lib/listing";
+import { listingDescription, toListing, waLink } from "@/lib/listing";
 
 // These pages must render per request. The build container has no database
 // credentials, so a prerender would bake in either seed data or a permanent
@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const site = canonical();
   return {
     title: `${p.name} — ${p.locality} | Chariot Realty`,
-    description: p.description ?? `${p.name}, ${p.configuration ?? "residential"} in ${p.locality}, Mumbai — verified availability via Chariot Realty.`,
+    description: listingDescription(p),
     alternates: { canonical: `${site}/properties/${p.slug}` },
   };
 }
