@@ -4,7 +4,7 @@ import type { Neighborhood, NeighborhoodFAQ } from "@/lib/neighborhoods";
 export type JsonLd = Record<string, unknown>;
 
 const SITE = "https://www.chariotrealty.in";
-const LOGO = "https://www.chariotrealty.in/images.jpeg";
+const LOGO = "https://www.chariotrealty.in/apple-touch-icon.png";
 const PHONE_DISPLAY = "+91 97737 57759";
 const PHONE_TEL = "+919773757759";
 const CONTACT_KAPIL = "Kapil Gopal Ojha";

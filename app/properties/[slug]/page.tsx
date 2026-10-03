@@ -2,18 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { canonical, listingJsonLd } from "@/lib/seo";
 import { readInventory } from "@/lib/inventory";
+import { ListingDetail } from "@/components/listing-detail";
+import { toListing, waLink } from "@/lib/listing";
 
 // These pages must render per request. The build container has no database
 // credentials, so a prerender would bake in either seed data or a permanent
 // "unavailable" notice. Reading live at request time is what keeps the site
 // honest about what is actually listed.
 export const dynamic = "force-dynamic";
-
-const WA_NUMBER = "919773757759";
-
-function waLink(message: string): string {
-  return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(message)}`;
-}
 
 // A database outage must not be reported as "this property does not exist".
 // Returning notFound() here would tell search engines to drop every real
@@ -25,7 +21,7 @@ function unavailable() {
         <p className="kicker">Temporarily unavailable</p>
         <h1>We could not load our listings right now</h1>
         <p className="loc">Please refresh in a moment, or contact us directly and we will help straight away.</p>
-        <p className="loc"><a href={`https://wa.me/${WA_NUMBER}`}>Message us on WhatsApp</a></p>
+        <p className="loc"><a href={waLink("Hi Kapil, I could not load your website just now.")}>Message us on WhatsApp</a></p>
       </section>
     </main>
   );
@@ -53,30 +49,12 @@ export default async function PropertyDetailPage({ params }: { params: { slug: s
   if (degraded) return unavailable();
   const p = all.find((x) => x.slug === params.slug);
   if (!p) notFound();
-  const site = canonical();
   const ld = [...listingJsonLd(p)];
-  const waMsg = `Hi Kapil, I'm interested in ${p.name} (${p.locality}, ${p.price}).`;
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
-      <main className="page">
-        <section className="section-head page-head">
-          <p className="kicker">{p.locality}</p>
-          <h1>{p.name}</h1>
-          <p className="loc">{p.location}</p>
-          <p className="price">{p.price}</p>
-        </section>
-        <section className="detail-specs">
-          {p.configuration && <div><span>Configuration</span><strong>{p.configuration}</strong></div>}
-          {p.carpetAreaSqft ? <div><span>Carpet</span><strong>{p.carpetAreaSqft.toLocaleString("en-IN")} sqft</strong></div> : null}
-          {p.parking && <div><span>Parking</span><strong>{p.parking}</strong></div>}
-          {p.possession && <div><span>Possession</span><strong>{p.possession}</strong></div>}
-          <div><span>Status</span><strong>Verified · {p.status === "published" ? "Live" : "Draft"}</strong></div>
-        </section>
-        {p.description && <p className="detail-desc">{p.description}</p>}
-        <div className="detail-cta">
-          <a className="btn-primary" href={waLink(waMsg)}>Direct enquiry on WhatsApp</a>
-        </div>
+      <main className="shell detail-shell page">
+        <ListingDetail listing={toListing(p)} similar={all.filter((candidate) => candidate.slug !== p.slug).map(toListing).slice(0, 2)} />
       </main>
     </>
   );

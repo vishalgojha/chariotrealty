@@ -1,233 +1,229 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { LeadModal, type LeadKind } from "@/components/lead-modal";
+import { ContactBar } from "@/components/contact-bar";
+import { ListingCard } from "@/components/listing-card";
+import { ArrowRightIcon, ChevronDownIcon, InstagramIcon, SearchIcon, WhatsAppIcon } from "@/components/icons";
+import {
+  LISTING_FILTERS,
+  matchesFilter,
+  searchListings,
+  toListing,
+  waLink,
+  type Listing,
+  type ListingFilter,
+} from "@/lib/listing";
 
-type Category = "residential" | "commercial" | "under-construction";
-
-type ApiProperty = {
-  id: string;
-  slug: string;
-  name: string;
-  category: Category;
-  locality: string;
-  microMarket: string;
-  city: string;
-  zone: string;
-  location: string;
-  price: string;
-  priceValue: number;
-  priceUnit: "monthly_rent" | "per_sqft" | "total_price";
-  currency: string;
-  carpetAreaSqft: number;
-  configuration?: string;
-  parking?: number;
-  possession?: string;
-  reraApproved?: boolean;
-  image?: string;
-  mediaType?: "image" | "video";
-  description?: string;
-  source?: string;
-};
-
-type Property = {
-  category: Category;
-  name: string;
-  location: string;
-  price: string;
-  priceNote?: string;
-  image?: string;
-  mediaType?: "image" | "video";
-  tag: string;
-  locale: string;
-  specs: [string, string][];
-  links: { label: string; href?: string; icon: "folder" | "instagram" }[];
-  cta: string;
-  message: string;
-};
-
-const whatsapp = "https://wa.me/919773757759";
-
-const fallback: Property[] = [
-  {
-    category: "residential",
-    name: "Ten BKC",
-    location: "Kalanagar, Bandra East · High Floor",
-    price: "₹2.80L",
-    priceNote: "/ mo",
-    image: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80",
-    tag: "Verified",
-    locale: "BKC / Kalanagar",
-    specs: [["Config", "3 BHK"], ["Carpet", "1,100 sqft"], ["Parking", "2 Covered"]],
-    links: [
-      { label: "Watch Reel", icon: "instagram" },
-      { label: "Drive Photos", icon: "folder" },
-    ],
-    cta: "Contact Kapil on WhatsApp",
-    message: "Hi Kapil, I'm interested in Ten BKC.",
-  },
-  {
-    category: "commercial",
-    name: "Godrej BKC",
-    location: "G-Block BKC · Financial District",
-    price: "₹285",
-    priceNote: "/ sqft",
-    tag: "Grade-A Office",
-    locale: "",
-    specs: [["Carpet", "4,200 sqft"], ["Condition", "Warm Shell"], ["Parking", "6 Reserved"]],
-    links: [{ label: "Layout Plan PDF", icon: "folder" }],
-    cta: "Contact Kapil on WhatsApp",
-    message: "Hi Kapil, send term sheet for Godrej BKC.",
-  },
-  {
-    category: "under-construction",
-    name: "Rustomjee Cleon",
-    location: "Bandra East · RERA Approved",
-    price: "From ₹4.25 Cr",
-    tag: "Possession Q4 2026",
-    locale: "Kalanagar",
-    image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80",
-    specs: [["Typology", "2 & 3 BHK"], ["Carpet", "685 - 1,020"], ["Payment", "CLP Scheme"]],
-    links: [
-      { label: "Brochure", icon: "folder" },
-      { label: "Site Reel", icon: "instagram" },
-    ],
-    cta: "Contact Kapil on WhatsApp",
-    message: "Hi Kapil, send cost sheet for Rustomjee Cleon.",
-  },
-];
-
-const CATEGORY: Record<Category, string> = {
-  residential: "Residential",
-  commercial: "Commercial",
-  "under-construction": "Under Construction",
-};
-
-function priceParts(property: ApiProperty): { price: string; note?: string } {
-  if (property.priceUnit === "monthly_rent") {
-    const numeric = property.priceValue ? `₹${property.priceValue.toLocaleString("en-IN")}/mo` : property.price;
-    return { price: numeric.replace(/\/mo\/mo/, "/mo"), note: "/ mo" };
-  }
-  if (property.priceUnit === "per_sqft") {
-    return { price: `₹${property.priceValue.toLocaleString("en-IN")}`, note: "/ sqft" };
-  }
-  return { price: property.price || `From ₹${(property.priceValue ?? 0).toLocaleString("en-IN")}` };
-}
-
-function fromApi(row: ApiProperty): Property {
-  const price = priceParts(row);
-  const specs: [string, string][] = [
-    ["Config", row.configuration || CATEGORY[row.category]],
-    ["Carpet", row.carpetAreaSqft ? `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft` : "On request"],
-  ];
-  if (row.parking) specs.push(["Parking", `${row.parking} Reserved`]);
-  if (row.possession) specs.push(["Possession", row.possession]);
-
-  const tag = row.category === "under-construction" ? (row.possession ? `Possession ${row.possession}` : "New Launch") : row.category === "commercial" ? "Grade-A Office" : "Verified";
-  const locale = [row.microMarket, row.zone].filter(Boolean).join(" / ");
-  return {
-    category: row.category,
-    name: row.name,
-    location: row.location || [row.locality, row.zone].filter(Boolean).join(" · "),
-    price: price.price,
-    priceNote: price.note,
-    image: row.image,
-    mediaType: row.mediaType,
-    tag,
-    locale,
-    specs,
-    links: [],
-    cta: "Contact Kapil on WhatsApp",
-    message: `Hi Kapil, I'm interested in ${row.name}.`,
-  };
-}
-
-function InstagramIcon({ size = 14 }: { size?: number }) {
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" /></svg>;
-}
-
-function FolderIcon() {
-  return <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>;
-}
-
-function PropertyCard({ property }: { property: Property }) {
-  const message = encodeURIComponent(property.message);
-  const availableLinks = property.links.filter((link) => link.href && !link.href.includes("PLACEHOLDER"));
-  return (
-    <article className="card">
-      <div className={`card-media ${property.image ? "" : "private"}`} style={property.image && property.mediaType !== "video" ? { backgroundImage: `url('${property.image}')` } : undefined}>
-        {property.image && property.mediaType === "video" && <video className="card-media-video" src={property.image} muted loop playsInline controls />}
-        <span className={`tag ${property.category === "under-construction" ? "green" : ""}`}>{property.tag}</span>
-        {property.locale && <span className="tag locale">{property.locale}</span>}
-        {!property.image && <p className="private-note">Bare Shell / Fitted options available</p>}
-      </div>
-      <div className="card-body">
-        <h3>{property.name}</h3>
-        <p className="loc">{property.location}</p>
-        <p className="price">{property.price} {property.priceNote && <span>{property.priceNote}</span>}</p>
-        <div className="specs">
-          {property.specs.map(([key, value]) => <div key={key}><p className="spec-key">{key}</p><p className="spec-value" title={value}>{value}</p></div>)}
-        </div>
-        {availableLinks.length > 0 && <div className="media-links">
-          {availableLinks.map((link) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="media-link-btn">{link.icon === "folder" ? <FolderIcon /> : <InstagramIcon size={12} />}{link.label}</a>)}
-        </div>}
-        <a href={`${whatsapp}?text=${message}`} className="card-cta">{property.cta}</a>
-      </div>
-    </article>
-  );
-}
+const SCROLL_KEY = "chariot:listing-scroll";
+const INSTAGRAM = "https://instagram.com/chariotrealty.in";
 
 export default function Home() {
-  const [activeCategory, setActiveCategory] = useState<"all" | Category>("all");
-  const [liveStats, setLiveStats] = useState({ listings: 0, hubs: 0 });
-  const [cards, setCards] = useState<Property[]>(fallback);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [filter, setFilter] = useState<ListingFilter>("all");
+  const [query, setQuery] = useState("");
+  const [modal, setModal] = useState<LeadKind | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
-    Promise.all([fetch("/api/properties").then((response) => response.json()), fetch("/api/markets").then((response) => response.json())])
-      .then(([propertyData, marketData]) => {
-        const data = propertyData.data as ApiProperty[] | undefined;
-        setCards(Array.isArray(data) ? data.map(fromApi) : fallback);
-        setLiveStats({ listings: propertyData.count ?? data?.length ?? 0, hubs: marketData.data?.length ?? 0 });
+    const stored = window.sessionStorage.getItem(SCROLL_KEY);
+    if (stored) {
+      window.sessionStorage.removeItem(SCROLL_KEY);
+      window.scrollTo(0, Number(stored) || 0);
+    }
+
+    let active = true;
+    fetch("/api/properties")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!active) return;
+        if (payload.degraded) {
+          setUnavailable(true);
+          return;
+        }
+        const rows = Array.isArray(payload.data) ? payload.data : [];
+        setListings(rows.map(toListing));
       })
-      .catch(() => setLiveStats({ listings: fallback.length, hubs: 0 }));
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const visibleProperties = activeCategory === "all" ? cards : cards.filter((property) => property.category === activeCategory);
+  const visible = useMemo(() => searchListings(listings.filter((listing) => matchesFilter(listing, filter)), query), [listings, filter, query]);
+  const filtered = filter !== "all" || query.trim().length > 0;
+  const featured = visible[0] ?? listings[0];
+
+  function resetFilters() {
+    setFilter("all");
+    setQuery("");
+  }
 
   return (
     <>
-      <nav>
-        <a className="logo logo-image-link" href="#top"><img src="/images.jpeg" alt="Chariot Realty" /></a>
-        <div className="nav-links"><a href="#inventory">Residential</a><a href="#inventory">Commercial</a><a href="#inventory">Under Construction</a></div>
-        <div className="nav-actions"><a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer" className="nav-insta"><InstagramIcon />@chariotrealty.in</a><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`} className="nav-cta">WhatsApp Kapil</a></div>
-      </nav>
+      <header className="topbar">
+        <div className="shell topbar-inner">
+          <a className="brand" href="/">
+            <span className="brand-logo">
+              <img src="/apple-touch-icon.png" alt="Chariot Realty" />
+            </span>
+            <span>
+              <span className="brand-name">
+                Chariot <span>Realty</span>
+              </span>
+              <span className="brand-sub">Bandra · BKC</span>
+            </span>
+          </a>
 
-      <main id="top">
-        <section className="hero">
-          <div className="hero-copy">
-            <p className="kicker">Bandra West · BKC · Bandra East</p>
-            <h1>Homes &amp; offices for people who don&apos;t have time to <em>search</em>.</h1>
-            <p className="sub">Verified prime rentals, corporate workspaces, and direct developer mandates across Bandra and BKC.</p>
-            <div className="hero-actions"><a href="#inventory" className="btn-primary">View Inventory</a><a href={whatsapp} className="btn-secondary">Talk to Kapil</a></div>
-            <div className="hero-stats"><div><p className="stat-number">{liveStats.listings || "—"}</p><p className="stat-label">Live Listings</p></div><div><p className="stat-number">{liveStats.hubs || "—"}</p><p className="stat-label">Prime Hubs</p></div><div><p className="stat-number">1</p><p className="stat-label">Direct Contact</p></div></div>
-          </div>
-          <div className="hero-media" aria-label="Modern Bandra residence" />
-        </section>
+          <nav className="topnav" aria-label="Sections">
+            <a href="#opportunities">Residential</a>
+            <a href="#opportunities">Commercial</a>
+            <a href="#opportunities">Under Construction</a>
+          </nav>
 
-        <section className="section" id="inventory">
-          <div className="section-head"><h2>Current Opportunities</h2></div>
-          <div className="filter-strip" role="tablist" aria-label="Property categories">
-            {(["all", "residential", "commercial", "under-construction"] as const).map((category) => <button key={category} type="button" role="tab" aria-selected={activeCategory === category} className={`filter-btn ${activeCategory === category ? "active" : ""}`} onClick={() => setActiveCategory(category)}>{category === "under-construction" ? "Under Construction" : category[0].toUpperCase() + category.slice(1)}</button>)}
+          <a className="pill pill-dark pill-sm" href={waLink("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")} target="_blank" rel="noreferrer">
+            <WhatsAppIcon size={15} /> WhatsApp
+          </a>
+        </div>
+      </header>
+
+      <main className="shell" id="top">
+        {featured ? (
+          <div className="featured" style={{ marginTop: 20 }}>
+            <span className="badge-featured">Featured</span>
+            <div>
+              <h3>{featured.name}</h3>
+              <p className="featured-sub">{featured.summary}</p>
+              <div className="featured-cta">
+                <a className="pill pill-white pill-sm" href={`/properties/${featured.slug}`}>
+                  View <ArrowRightIcon size={13} />
+                </a>
+              </div>
+            </div>
+            <div
+              className="featured-media"
+              style={featured.media[0] ? { backgroundImage: `url('${featured.media[0].url}')` } : undefined}
+              aria-hidden="true"
+            />
           </div>
-          {visibleProperties.length ? (
-            <div className="grid">{visibleProperties.map((property) => <PropertyCard key={property.name} property={property} />)}</div>
+        ) : null}
+
+        <section id="opportunities">
+          <div className="section">
+            <div className="section-head">
+              <div>
+                <p className="kicker">Live inventory</p>
+                <h2>Current Opportunities</h2>
+              </div>
+            </div>
+          </div>
+
+          <div className="actions">
+            <button type="button" className="pill pill-gold" onClick={() => setModal("requirement")}>
+              Post your requirement
+            </button>
+            <button type="button" className="pill pill-outline" onClick={() => setModal("listing")}>
+              List your property
+            </button>
+          </div>
+
+          <form className="search" onSubmit={(event) => event.preventDefault()} role="search">
+            <SearchIcon />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search 3 BHK, BKC…"
+              aria-label="Search listings"
+            />
+            <button type="submit" className="pill pill-gold pill-sm">
+              Search
+            </button>
+          </form>
+
+          <div className="filterbar">
+            <span className="select-chip">
+              {LISTING_FILTERS.find((option) => option.value === filter)?.label}
+              <ChevronDownIcon />
+              <select value={filter} onChange={(event) => setFilter(event.target.value as ListingFilter)} aria-label="Filter listings">
+                {LISTING_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </span>
+            <span className="count">
+              {visible.length} {visible.length === 1 ? "listing" : "listings"}
+            </span>
+          </div>
+
+          {visible.length ? (
+            <div className="listing-grid">
+              {visible.map((listing) => (
+                <ListingCard key={listing.slug} listing={listing} />
+              ))}
+            </div>
           ) : (
-            <p className="empty-state section">No {activeCategory === "all" ? "" : `${CATEGORY[activeCategory].toLowerCase()} `}listings right now — check back soon.</p>
+            <p className="empty-state">
+              {unavailable
+                ? "Live inventory is temporarily unavailable. Message Kapil on WhatsApp for today's shortlist."
+                : loaded
+                  ? "No listings match that search right now — message Kapil and we will send a shortlist."
+                  : "Loading live inventory…"}
+            </p>
           )}
-          <div className="insta-strip"><div className="insta-left"><div className="insta-icon-box"><InstagramIcon size={22} /></div><div><h4>Watch Our Weekly Site Walkthroughs</h4><p>Raw uncut tours, lobby reviews, and off-market updates directly from Bandra &amp; BKC.</p></div></div><a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer" className="insta-btn">Follow @chariotrealty.in →</a></div>
+
+          {filtered && listings.length > visible.length ? (
+            <div className="view-all">
+              <button type="button" className="pill pill-outline" onClick={resetFilters}>
+                View all {listings.length} listings
+              </button>
+            </div>
+          ) : null}
+
+          <div className="panel" style={{ marginTop: 26 }}>
+            <h4>Weekly site walkthroughs</h4>
+            <p className="loc" style={{ marginBottom: 14 }}>
+              Raw uncut tours, lobby reviews and off-market updates from Bandra &amp; BKC.
+            </p>
+            <a className="pill pill-outline pill-sm" href={INSTAGRAM} target="_blank" rel="noreferrer">
+              <InstagramIcon size={14} /> Follow @chariotrealty.in
+            </a>
+          </div>
         </section>
+
+        <footer className="site-footer">
+          <div className="brand">
+            <span className="brand-logo">
+              <img src="/apple-touch-icon.png" alt="" />
+            </span>
+            <p>
+              Chariot Realty
+              <br />
+              Bandra West · BKC · Bandra East · Khar · Santacruz
+            </p>
+          </div>
+          <p>
+            Kapil Gopal Ojha · +91 97737 57759
+            <br />
+            <a href={waLink("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")} target="_blank" rel="noreferrer">
+              WhatsApp
+            </a>{" "}
+            ·{" "}
+            <a href={INSTAGRAM} target="_blank" rel="noreferrer">
+              @chariotrealty.in
+            </a>
+          </p>
+        </footer>
       </main>
 
-      <footer><div className="f-left"><a className="logo logo-image-link" href="#top"><img src="/images.jpeg" alt="Chariot Realty" /></a><p>Bandra West · BKC · Bandra East · Khar · Santacruz</p></div><div className="f-right"><p>Kapil Gopal Ojha · +91 97737 57759</p><p><a href={`${whatsapp}?text=${encodeURIComponent("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")}`}>WhatsApp</a> · <a href="https://instagram.com/chariotrealty.in" target="_blank" rel="noreferrer">@chariotrealty.in</a></p></div></footer>
+      <LeadModal kind={modal ?? "requirement"} open={modal !== null} onClose={() => setModal(null)} />
+      <ContactBar />
     </>
   );
 }

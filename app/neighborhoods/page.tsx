@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { canonical, neighborhoodsIndexJsonLd, organizationJsonLd } from "@/lib/seo";
 import { neighborhoodIndex } from "@/lib/neighborhoods";
+import { SiteHeader } from "@/components/site-header";
+import { ContactBar } from "@/components/contact-bar";
 
 export const metadata: Metadata = {
   title: "Neighborhoods — Bandra, Khar, Santacruz, Juhu & BKC | Chariot Realty",
@@ -15,7 +17,8 @@ export default function NeighborhoodsIndexPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <main className="page">
+      <SiteHeader />
+      <main className="shell page">
         <section className="section-head page-head">
           <h1>Mumbai Neighborhoods We Cover</h1>
           <p className="sub">
@@ -33,6 +36,7 @@ export default function NeighborhoodsIndexPage() {
           ))}
         </section>
       </main>
+      <ContactBar />
     </>
   );
 }

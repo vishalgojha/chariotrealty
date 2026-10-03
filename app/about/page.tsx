@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { canonical, organizationJsonLd, faqJsonLd } from "@/lib/seo";
 import { neighborhoods } from "@/lib/neighborhoods";
+import { SiteHeader } from "@/components/site-header";
+import { ContactBar } from "@/components/contact-bar";
 
 const WA_TXT = `https://wa.me/919773757759?text=`;
 
@@ -23,7 +25,8 @@ export default function AboutPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
-      <main className="page">
+      <SiteHeader />
+      <main className="shell page">
         <section className="section-head page-head">
           <h1>About Chariot Realty</h1>
           <p className="sub">
@@ -64,6 +67,7 @@ export default function AboutPage() {
           </a>
         </section>
       </main>
+      <ContactBar />
     </>
   );
 }

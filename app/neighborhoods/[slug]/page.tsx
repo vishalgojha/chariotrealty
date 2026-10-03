@@ -4,6 +4,8 @@ import { canonical, neighborhoodJsonLd, faqJsonLd, listingJsonLd } from "@/lib/s
 import { neighborhoods } from "@/lib/neighborhoods";
 import { mumbaiNeighborhoodSlugs } from "@/lib/seo";
 import { readInventory } from "@/lib/inventory";
+import { SiteHeader } from "@/components/site-header";
+import { ContactBar } from "@/components/contact-bar";
 
 // Rendered per request for the same reason as the property pages: the build
 // container cannot read the database, so a prerender would freeze an empty or
@@ -45,7 +47,8 @@ export default async function NeighborhoodPage({ params }: PageProps) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <main id="neighborhood-top" className="page">
+      <SiteHeader />
+      <main id="neighborhood-top" className="shell page">
         <header className="neighborhood-hero">
           <h1>{n.name}</h1>
           <p className="zone">{n.zone}</p>
@@ -142,6 +145,7 @@ export default async function NeighborhoodPage({ params }: PageProps) {
           ))}
         </section>
       </main>
+      <ContactBar />
     </>
   );
 }
