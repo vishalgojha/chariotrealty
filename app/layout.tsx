@@ -6,7 +6,8 @@ export const metadata: Metadata = {
   applicationName: "Chariot Realty",
   title: "Chariot Realty — Bandra & BKC Prime Real Estate",
   description: "Verified prime rentals, corporate workspaces, and direct developer mandates across Bandra and BKC.",
-  manifest: "/manifest.webmanifest",
+  // No manifest here. Only one can apply per page, and the public site and the
+  // desk each need their own; they are declared in their own layouts.
   icons: {
     icon: ["/favicon.ico", "/icon.svg"],
     apple: "/apple-touch-icon.png",
