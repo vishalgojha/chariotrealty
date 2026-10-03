@@ -113,6 +113,7 @@ export default function Home() {
           >
             <span className="featured-shade" />
             <span className="badge-featured">Featured</span>
+            {!featuredSlide ? <div className="featured-placeholder">Photos coming soon</div> : null}
             <div className="featured-copy">
               <h3>{featured.name}</h3>
               <p className="featured-sub">{featured.summary}</p>

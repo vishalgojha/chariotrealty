@@ -11,6 +11,7 @@ function SimilarCard({ listing }: { listing: Listing }) {
   return (
     <a className="similar-card" href={`/properties/${listing.slug}`}>
       <div className="similar-media" style={cover ? { backgroundImage: `url('${cover.url}')` } : undefined}>
+        {!cover ? <div className="listing-placeholder"><img src="/apple-touch-icon.png" alt="" /><span>Photos coming soon</span></div> : null}
         <span className="similar-badge"><CheckIcon size={10} /> Verified</span>
       </div>
       <div className="similar-body">

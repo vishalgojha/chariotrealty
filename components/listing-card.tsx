@@ -18,6 +18,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
         className="listing-media"
         style={cover ? { backgroundImage: `url('${cover.url}')` } : undefined}
       >
+        {!cover ? <div className="listing-placeholder"><img src="/apple-touch-icon.png" alt="" /><span>Photos coming soon</span></div> : null}
         {cover?.type === "video" ? (
           <video src={cover.url} muted loop playsInline className="carousel-slide" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         ) : null}
