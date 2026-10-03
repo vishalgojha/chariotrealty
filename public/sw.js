@@ -1,4 +1,4 @@
-const CACHE = "chariot-realty-v4";
+const CACHE = "chariot-realty-v5";
 const SHELL = ["/manifest.webmanifest", "/favicon.ico", "/app-icon-any.png", "/app-icon-maskable.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
@@ -36,7 +36,7 @@ self.addEventListener("fetch", (event) => {
         const copy = response.clone();
         caches.open(CACHE).then((cache) => cache.put(event.request, copy));
         return response;
-      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/admin"))),
+      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))),
     );
   }
 });

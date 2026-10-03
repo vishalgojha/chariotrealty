@@ -594,4 +594,13 @@ img{max-width:100%;display:block}
 .listing-detail-link{position:relative;z-index:1;color:var(--navy);font-size:12px;font-weight:700;margin-right:auto}
 .listing-detail-link span{color:var(--gold-2);font-size:15px}
 .view-all{margin:18px 0 8px}
-@media(min-width:768px){.shell.public-shell{max-width:480px;padding-left:16px;padding-right:16px}.topnav{display:none}}
+@media(min-width:768px){
+  .shell.public-shell,.home-shell{max-width:1080px;padding-left:32px;padding-right:32px}
+  .topnav{display:flex}
+  .listing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .listing-media{height:auto;aspect-ratio:16/10}
+  .featured{min-height:230px}
+  .featured h3{font-size:30px}
+}
+@media(min-width:900px){.listing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1240px){.listing-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
