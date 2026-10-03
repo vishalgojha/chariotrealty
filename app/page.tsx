@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { ContactBar } from "@/components/contact-bar";
 import { ListingCard } from "@/components/listing-card";
@@ -25,6 +25,8 @@ export default function Home() {
   const [modal, setModal] = useState<LeadKind | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const featuredTouch = useRef<number | null>(null);
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem(SCROLL_KEY);
@@ -55,8 +57,12 @@ export default function Home() {
   }, []);
 
   const visible = useMemo(() => searchListings(listings.filter((listing) => matchesFilter(listing, filter)), query), [listings, filter, query]);
-  const filtered = filter !== "all" || query.trim().length > 0;
   const featured = visible[0] ?? listings[0];
+  const featuredSlide = featured?.media[featuredIndex] ?? featured?.media[0];
+
+  useEffect(() => {
+    setFeaturedIndex(0);
+  }, [featured?.slug]);
 
   function resetFilters() {
     setFilter("all");
@@ -91,11 +97,23 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="shell" id="top">
+      <main className="shell public-shell home-shell" id="top">
         {featured ? (
-          <div className="featured" style={{ marginTop: 20 }}>
+          <div
+            className="featured"
+            style={{ marginTop: 20, backgroundImage: featuredSlide ? `url('${featuredSlide.url}')` : undefined }}
+            onTouchStart={(event) => { featuredTouch.current = event.touches[0].clientX; }}
+            onTouchEnd={(event) => {
+              if (featuredTouch.current === null) return;
+              const delta = event.changedTouches[0].clientX - featuredTouch.current;
+              featuredTouch.current = null;
+              if (delta < -40) setFeaturedIndex((current) => Math.min(current + 1, featured.media.length - 1));
+              if (delta > 40) setFeaturedIndex((current) => Math.max(current - 1, 0));
+            }}
+          >
+            <span className="featured-shade" />
             <span className="badge-featured">Featured</span>
-            <div>
+            <div className="featured-copy">
               <h3>{featured.name}</h3>
               <p className="featured-sub">{featured.summary}</p>
               <div className="featured-cta">
@@ -104,11 +122,7 @@ export default function Home() {
                 </a>
               </div>
             </div>
-            <div
-              className="featured-media"
-              style={featured.media[0] ? { backgroundImage: `url('${featured.media[0].url}')` } : undefined}
-              aria-hidden="true"
-            />
+            {featured.media.length > 1 ? <div className="featured-dots" aria-label="Featured photos">{featured.media.map((slide, index) => <button type="button" aria-label={`Featured photo ${index + 1}`} key={slide.url} className={index === featuredIndex ? "active" : ""} onClick={(event) => { event.preventDefault(); setFeaturedIndex(index); }} />)}</div> : null}
           </div>
         ) : null}
 
@@ -178,7 +192,7 @@ export default function Home() {
             </p>
           )}
 
-          {filtered && listings.length > visible.length ? (
+          {listings.length ? (
             <div className="view-all">
               <button type="button" className="pill pill-outline" onClick={resetFilters}>
                 View all {listings.length} listings

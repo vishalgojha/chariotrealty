@@ -1,7 +1,7 @@
 import { CheckIcon, InstagramIcon } from "@/components/icons";
-import { waLink, type Listing } from "@/lib/listing";
+import { type Listing } from "@/lib/listing";
 
-export function ListingCard({ listing, reelUrl }: { listing: Listing; reelUrl?: string }) {
+export function ListingCard({ listing }: { listing: Listing }) {
   const cover = listing.media[0];
 
   return (
@@ -31,21 +31,16 @@ export function ListingCard({ listing, reelUrl }: { listing: Listing; reelUrl?: 
       <div className="listing-body">
         <h3 className="listing-title">{listing.name}</h3>
         <p className="loc">{listing.location}</p>
+        {listing.specsLine ? <p className="listing-specs">{listing.specsLine}</p> : null}
         <p className="listing-price">
           {listing.price}
           {listing.priceNote ? <span>{listing.priceNote}</span> : null}
         </p>
         <div className="rule" />
         <div className="listing-foot">
-          {reelUrl ? (
-            <a className="pill pill-ghost pill-sm" href={reelUrl} target="_blank" rel="noreferrer">
-              <InstagramIcon size={14} /> Instagram Reel
-            </a>
-          ) : (
-            <a className="pill pill-ghost pill-sm" href={waLink(listing.waMessage)} target="_blank" rel="noreferrer">
-              Ask Kapil about this
-            </a>
-          )}
+          {listing.mediaLinks.length ? <a className="pill pill-ghost pill-sm" href={listing.mediaLinks[0].href} target="_blank" rel="noreferrer">
+            {listing.mediaLinks[0].label === "Instagram Reel" ? <InstagramIcon size={14} /> : null}{listing.mediaLinks[0].label}
+          </a> : null}
         </div>
       </div>
     </article>

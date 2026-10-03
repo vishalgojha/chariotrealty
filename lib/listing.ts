@@ -70,7 +70,7 @@ export function priceParts(property: { price?: string; priceValue?: number; pric
 
 export type ListingMedia = { url: string; type: "image" | "video" };
 export type ListingFact = { label: string; value: string };
-export type ListingMediaLink = { label: "Instagram Reel" | "Drive Photos"; href: string };
+export type ListingMediaLink = { label: "Instagram Reel" | "Google Drive Photos"; href: string };
 
 export type Listing = {
   slug: string;
@@ -165,7 +165,7 @@ export function toListing(row: ChariotProperty): Listing {
   const reelUrl = customUrl(row, ["reel_url", "instagram_reel_url", "instagram"]);
   const driveUrl = customUrl(row, ["drive_url", "drive_photos_url", "photos_url"]);
   if (reelUrl) mediaLinks.push({ label: "Instagram Reel", href: reelUrl });
-  else if (driveUrl) mediaLinks.push({ label: "Drive Photos", href: driveUrl });
+  else if (driveUrl) mediaLinks.push({ label: "Google Drive Photos", href: driveUrl });
 
   const priceText = `${price.price}${price.note ? ` ${price.note}` : ""}`;
   const specsLine = customText(row, ["specs_line", "specifications"]) ||
@@ -244,8 +244,8 @@ export type ListingFilter = "all" | "buy" | "rent" | "commercial";
 
 export const LISTING_FILTERS: { value: ListingFilter; label: string }[] = [
   { value: "all", label: "All listings" },
-  { value: "buy", label: "Buy" },
-  { value: "rent", label: "Rent" },
+  { value: "buy", label: "For Sale" },
+  { value: "rent", label: "For Rent" },
   { value: "commercial", label: "Commercial" },
 ];
 
