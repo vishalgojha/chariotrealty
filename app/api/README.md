@@ -5,8 +5,8 @@ The API is available under `/api` on the deployed Next.js service.
 ## Endpoints
 
 - `GET /api/health` — deployment health check.
-- `GET /api/properties?locality=BKC&category=commercial` — filtered Mumbai inventory. Supported filters: `locality`, `category`, `configuration`, `minCarpet`, `maxCarpet`.
-- `GET /api/inventory?admin=1` — admin-only Chariot CMS inventory.
+- `GET /api/properties?locality=BKC&category=commercial` — filtered Mumbai inventory. Supported filters: `locality`, `category`, `configuration`, `minCarpet`, `maxCarpet`. This is the only public read of listings: it returns structured columns plus allowlisted `custom_fields`, and the stored source description is replaced with generated copy.
+- `GET /api/inventory` — admin-only Chariot CMS inventory, including each listing's source and the message it was parsed from. Requires an admin session; there is no public variant.
 - `POST /api/inventory` and `PATCH /api/inventory/:id` — create, edit, approve, publish, or archive inventory.
 - `POST /api/inventory/images` — upload inventory images to the Chariot Supabase Storage bucket.
 - `GET /api/markets` — supported Mumbai micro-market metadata.
