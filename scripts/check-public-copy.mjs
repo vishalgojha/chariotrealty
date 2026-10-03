@@ -1,12 +1,15 @@
-// Checks that nothing identifying the person who supplied a listing can reach a
-// public description, in both directions: text lifted from a broker's own
-// message, and copy written by the model or by hand.
+// Checks the words a visitor reads on a listing: that nothing identifying the
+// person who supplied it can reach a public description, in both directions
+// (text lifted from a broker's own message, and copy written by the model or by
+// hand), and that the sentence built from stored columns says what it should
+// without repeating itself.
 //
-// Run with `npm run check:copy`. Node strips the TypeScript types, so no test
-// runner is needed; this runs before a deploy because the thing it guards is a
-// privacy promise made to third parties.
-import { readFileSync } from "node:fs";
+// Run with `npm run check:copy`. Node strips the TypeScript types and
+// scripts/alias-hook.mjs teaches it the "@/…" path alias, so this needs no test
+// runner. It runs before a deploy because the thing it guards is a promise made
+// to third parties.
 import { identityTermsFrom, rowIdentityTerms, sanitizePublicCopy } from "../lib/public-copy.ts";
+import { listingDescription } from "../lib/listing.ts";
 
 let failures = 0;
 
@@ -79,20 +82,78 @@ check("a bare label is still read", JSON.stringify(identityTermsFrom("group Sea 
 check("nothing publishable returns empty, not a mangled sentence", sanitizePublicCopy("Call me", []), "");
 check("a name in a clause drops the whole clause", sanitizePublicCopy("Listing by Ramesh Verma is a nice 1 BHK in Andheri, 600 sqft.", ["Ramesh Verma"]), "");
 
-// The published description is written by the model or by hand, so it has to be
-// sanitised again on the way out. These are the only two places that put copy in
-// front of a visitor: reading the stored key, and materialising a draft.
-// The modules cannot be imported directly because they use the "@/" path alias,
-// which plain Node does not resolve, so the wiring is asserted at source level.
-for (const [name, file, needle] of [
-  ["lib/listing.ts reads the generated key", "lib/listing.ts", "PUBLIC_DESCRIPTION_KEY"],
-  ["lib/listing.ts sanitises the description it returns", "lib/listing.ts", "const generated = sanitizePublicCopy("],
-  ["lib/listing.ts filters the key it sends to the client", "lib/listing.ts", "PUBLIC_TEXT_KEYS"],
-  ["lib/drafts.ts sanitises the copy it publishes", "lib/drafts.ts", "sanitizePublicCopy(String(extracted.public_description)"],
-]) {
-  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
-  check(name, source.includes(needle), true);
+// The published description is written by the model or by hand, so it is
+// sanitised again on the way out. This is the path a public page reads.
+function listing(overrides) {
+  return {
+    id: "1",
+    slug: "ten-bkc",
+    name: "Ten BKC",
+    category: "residential",
+    locality: "Bandra East",
+    microMarket: "Bandra East",
+    location: "Kalanagar, Bandra East",
+    price: "\u20b92.80L",
+    priceValue: 280000,
+    priceUnit: "monthly_rent",
+    currency: "INR",
+    carpetAreaSqft: 1233,
+    configuration: "3 BHK",
+    parking: "2",
+    mediaType: "image",
+    status: "published",
+    description: raw,
+    customFields: {},
+    ...overrides,
+  };
 }
+
+const fallback = listingDescription(listing({}));
+mustContain("the fallback keeps the property facts", fallback, ["3 BHK", "1,233 sqft", "2 covered parking spaces"]);
+mustNotContain("the fallback repeats no area twice", fallback, ["Bandra East, Bandra East", "\u00b7"]);
+
+check(
+  "an area that is already named in the location is not repeated",
+  listingDescription(listing({ locality: "Khar West", microMarket: "Khar West", location: "Khar West", carpetAreaSqft: 1850 })),
+  "Ten BKC is a 3 BHK, 1,850 sqft carpet area, 2 covered parking spaces property in Khar West. It is listed at \u20b92.80L / mo.",
+);
+check(
+  "a missing area falls back to the city",
+  listingDescription(listing({ locality: "", microMarket: "", location: "" })),
+  "Ten BKC is a 3 BHK, 1,233 sqft carpet area, 2 covered parking spaces property in Mumbai. It is listed at \u20b92.80L / mo.",
+);
+
+const published = listingDescription(listing({
+  customFields: {
+    public_description:
+      "A bright 3 BHK of 1,200 sqft on the 4th floor at Ten BKC. Call Ramesh Verma on +919833012345 to book a viewing.",
+  },
+}));
+check("uses the generated description", published, "A bright 3 BHK of 1,200 sqft on the 4th floor at Ten BKC.");
+mustNotContain("a hand-edited description is filtered too", published, ["Ramesh", "9833012345", "Call"]);
+mustNotContain("the fallback cannot leak the raw message", fallback, ["Ramesh", "98330", "Pali Hill Rentals"]);
+
+// Copy built from stored columns has to survive whatever is actually in the
+// database: dictated listings arrive with a bare "3" and with padding on the
+// name and the location, which used to read "Ten BKC  is a 3, 1,430 sqft
+// carpet area property".
+const dictated = listingDescription(listing({
+  name: "Ten BKC ",
+  configuration: "3",
+  location: "Kalanagar, Bandra East ",
+  locality: "Bandra East",
+  microMarket: "Bandra East",
+  parking: "",
+  carpetAreaSqft: 1430,
+  price: "\u20b92.90L",
+  priceValue: 29000000,
+  priceUnit: "total_price",
+}));
+check(
+  "a dictated configuration, padded name and padded location read cleanly",
+  dictated,
+  "Ten BKC is a 3 BHK, 1,430 sqft carpet area property in Kalanagar, Bandra East. It is listed at \u20b92.90L.",
+);
 
 check("identity terms include the stored label", JSON.stringify(rowIdentityTerms({
   description: "3 BHK in Bandra",

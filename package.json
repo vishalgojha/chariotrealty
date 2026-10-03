@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "check:copy": "node scripts/check-public-copy.mjs"
+    "check:copy": "node --import ./scripts/register-alias.mjs scripts/check-public-copy.mjs"
   },
   "dependencies": {
     "@composio/core": "^0.18.1",

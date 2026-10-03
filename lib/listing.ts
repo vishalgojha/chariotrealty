@@ -122,6 +122,29 @@ function areaChip(row: ChariotProperty): string {
   return row.microMarket || row.locality || row.zone || "";
 }
 
+/**
+ * The area named in a sentence, e.g. "Bandra East" or "Kalanagar, Bandra East".
+ *
+ * Locality and micro-market usually hold the same value, and joining them
+ * unconditionally produced "Khar West · Khar West" on live listings. Equal
+ * values collapse, and a pair where one is already inside the other collapses
+ * too, since "Bandra East, Bandra East" says nothing the first half did not.
+ */
+function areaPhrase(row: ChariotProperty): string {
+  const parts = [row.location, row.locality, row.microMarket]
+    .map((part) => (part || "").trim())
+    .filter(Boolean);
+  const kept: string[] = [];
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    if (kept.some((existing) => existing.toLowerCase().includes(lower))) continue;
+    const shorter = kept.findIndex((existing) => lower.includes(existing.toLowerCase()));
+    if (shorter !== -1) kept[shorter] = part;
+    else kept.push(part);
+  }
+  return kept.join(", ") || "Mumbai";
+}
+
 function listingMedia(row: ChariotProperty): ListingMedia[] {
   const urls = [...(row.images ?? []), row.image].filter((url): url is string => Boolean(url));
   const unique = Array.from(new Set(urls));
@@ -186,6 +209,22 @@ function customUrl(row: ChariotProperty, keys: string[]): string | undefined {
   return undefined;
 }
 
+/**
+ * The configuration as it should read in a sentence.
+ *
+ * A bare number is what a dictated or typed listing ends up with, and "3,
+ * 1,430 sqft carpet area property" says nothing useful, so a residential count
+ * is completed to "3 BHK". Anything already carrying a unit is left alone.
+ */
+function configurationFact(row: ChariotProperty): string | undefined {
+  const raw = (row.configuration || "").trim();
+  if (!raw) return undefined;
+  if (/^\d+(?:\.\d+)?$/.test(raw)) {
+    return row.category === "commercial" ? raw : `${raw} BHK`;
+  }
+  return raw;
+}
+
 export function listingDescription(row: ChariotProperty): string {
   // A generated description is preferred when one exists, but it is sanitised
   // again here rather than trusted: the same key can be filled in by hand, and
@@ -200,12 +239,14 @@ export function listingDescription(row: ChariotProperty): string {
 
   const price = priceParts(row);
   const facts = [
-    row.configuration,
+    configurationFact(row),
     row.carpetAreaSqft ? `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft carpet area` : undefined,
     row.parking ? `${row.parking} covered parking ${row.parking === 1 ? "space" : "spaces"}` : undefined,
   ].filter(Boolean);
-  const location = [row.locality, row.microMarket].filter(Boolean).join(" · ");
-  const sentence = facts.length ? `${row.name} is a ${facts.join(", ")} property in ${location || "Mumbai"}.` : `${row.name} is a property in ${location || "Mumbai"}.`;
+  const name = (row.name || "").trim() || "This property";
+  const sentence = facts.length
+    ? `${name} is a ${facts.join(", ")} property in ${areaPhrase(row)}.`
+    : `${name} is a property in ${areaPhrase(row)}.`;
   const pricing = price.price ? ` It is listed at ${price.price}${price.note ? ` ${price.note}` : ""}.` : "";
   const status = row.possession ? ` Possession: ${row.possession}.` : row.reraApproved ? " RERA approved." : "";
   return `${sentence}${pricing}${status}`;
@@ -214,7 +255,7 @@ export function listingDescription(row: ChariotProperty): string {
 export function toListing(row: ChariotProperty): Listing {
   const price = priceParts(row);
   const area = areaChip(row);
-  const location = row.location || [row.locality, row.zone].filter(Boolean).join(" · ");
+  const location = (row.location || "").trim() || [row.locality, row.zone].filter(Boolean).join(" · ");
 
   const badgeTone: Listing["badgeTone"] =
     row.category === "commercial" ? "neutral" : "verified";
@@ -250,7 +291,7 @@ export function toListing(row: ChariotProperty): Listing {
   return {
     slug: row.slug,
     category: row.category,
-    name: row.name,
+    name: (row.name || "").trim(),
     location,
     area,
     price: price.price,
@@ -269,7 +310,7 @@ export function toListing(row: ChariotProperty): Listing {
     carpetAreaSqft: Number(row.carpetAreaSqft || 0),
     configuration: row.configuration,
     possession: row.possession,
-    waMessage: `Hi Kapil, I'm interested in ${row.name} (${area || row.locality}, ${priceText}).`,
+    waMessage: `Hi Kapil, I'm interested in ${(row.name || "").trim()} (${area || row.locality}, ${priceText}).`,
     mediaLinks,
     specsLine,
   };
