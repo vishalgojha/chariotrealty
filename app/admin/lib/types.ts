@@ -56,13 +56,20 @@ export type CmsProperty = {
   carpet_area_sqft?: number;
   image_url?: string;
   media_type?: "image" | "video";
-  custom_fields?: Record<string, string | number | boolean>;
+  // Values can be arrays: the typed listing tables store amenities as lists.
+  custom_fields?: Record<string, string | number | boolean | string[]>;
   status: string;
   // Internal provenance. A parsed listing keeps the message it came from in
   // description, so both of these stay admin-only and are never published.
+  // The supplier is shown in the admin so we know who to credit and follow up
+  // with; the public site always credits Kapil instead.
   source?: string | null;
   source_reference?: string | null;
   description?: string | null;
+  source_sender?: string | null;
+  source_group?: string | null;
+  source_phone?: string | null;
+  source_message_at?: string | null;
 };
 
 export type WhatsappStatus = {

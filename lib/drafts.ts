@@ -8,6 +8,8 @@
 // chariot_properties, linked back by source_reference, so the two systems
 // stay separate and nothing is dual-written at extraction time.
 
+import { identityTermsFrom, sanitizePublicCopy } from "@/lib/public-copy";
+
 const TABLES = {
   residential_sale: "chariot_residential_sale_listings",
   residential_rent: "chariot_residential_rent_listings",
@@ -120,6 +122,16 @@ function toPublicProperty(table: DraftTable, row: Record<string, unknown>, slug:
   if (priceRaw) customFields.price_raw_text = priceRaw;
   if (row.built_up_area_sqft != null) customFields.built_up_area_sqft = row.built_up_area_sqft;
   if (row.furnishing_status) customFields.furnishing_status = String(row.furnishing_status);
+
+  // The description written at extraction time rides along in ai_extraction,
+  // because that column already exists on every typed table and a new one would
+  // need a migration. It is the only description this site publishes, so it is
+  // sanitised again on the way out rather than trusted as stored.
+  const extracted = (row.ai_extraction || {}) as Record<string, unknown>;
+  if (extracted.public_description) {
+    const text = sanitizePublicCopy(String(extracted.public_description), identityTermsFrom(String(row.broker_notes ? textOf(row.broker_notes) : "")));
+    if (text) customFields.public_description = text;
+  }
 
   return {
     slug,

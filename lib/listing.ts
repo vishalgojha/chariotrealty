@@ -1,4 +1,5 @@
 import type { ChariotProperty } from "@/lib/inventory";
+import { PUBLIC_DESCRIPTION_KEY, rowIdentityTerms, sanitizePublicCopy } from "@/lib/public-copy";
 
 export type Category = "residential" | "commercial" | "under-construction";
 export type PriceUnit = "monthly_rent" | "per_sqft" | "total_price";
@@ -7,6 +8,22 @@ export const WHATSAPP_NUMBER = "919773757759";
 export const WHATSAPP = `https://wa.me/${WHATSAPP_NUMBER}`;
 export const PHONE_TEL = "+919773757759";
 export const PHONE_DISPLAY = "+91 97737 57759";
+
+/**
+ * Every public listing is attributed to Kapil.
+ *
+ * Listings reach us from brokers and WhatsApp groups, and the sender is recorded
+ * internally so we know who to credit and follow up with. None of that is
+ * published: the page presents Kapil as the contact, so a third party never has
+ * to be named or called from our site.
+ */
+export const LISTING_CREDIT = {
+  name: "Kapil Gopal Ojha",
+  role: "Principal Broker & Founder, Chariot Realty",
+  phone: PHONE_DISPLAY,
+  tel: PHONE_TEL,
+  whatsapp: `https://wa.me/${WHATSAPP_NUMBER}`,
+} as const;
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   residential: "Residential",
@@ -129,6 +146,7 @@ export function publicTextList(value: unknown): string[] {
 
 const PUBLIC_LIST_KEYS = ["amenities", "unit_amenities", "building_amenities"] as const;
 const PUBLIC_URL_KEYS = ["reel_url", "instagram_reel_url", "drive_url", "drive_photos_url"] as const;
+const PUBLIC_TEXT_KEYS = [PUBLIC_DESCRIPTION_KEY] as const;
 
 // Everything the public API is allowed to echo back from custom_fields. Anything
 // not on this list stays server-side, so a new parsed field cannot quietly start
@@ -144,6 +162,10 @@ export function publicCustomFields(row: ChariotProperty): Record<string, unknown
   for (const key of PUBLIC_URL_KEYS) {
     const value = fields[key];
     if (typeof value === "string" && /^https?:\/\//i.test(value)) safe[key] = value;
+  }
+  for (const key of PUBLIC_TEXT_KEYS) {
+    const text = sanitizePublicCopy(typeof fields[key] === "string" ? String(fields[key]) : "", rowIdentityTerms(row));
+    if (text) safe[key] = text;
   }
   return Object.keys(safe).length ? safe : undefined;
 }
@@ -165,6 +187,17 @@ function customUrl(row: ChariotProperty, keys: string[]): string | undefined {
 }
 
 export function listingDescription(row: ChariotProperty): string {
+  // A generated description is preferred when one exists, but it is sanitised
+  // again here rather than trusted: the same key can be filled in by hand, and
+  // the stored description column still holds the source message.
+  const generated = sanitizePublicCopy(
+    typeof row.customFields?.[PUBLIC_DESCRIPTION_KEY] === "string"
+      ? String(row.customFields?.[PUBLIC_DESCRIPTION_KEY])
+      : "",
+    rowIdentityTerms(row),
+  );
+  if (generated) return generated;
+
   const price = priceParts(row);
   const facts = [
     row.configuration,

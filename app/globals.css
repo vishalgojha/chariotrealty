@@ -573,6 +573,53 @@ img{max-width:100%;display:block}
 .detail-contact-note{text-align:center;color:var(--grey);font-size:11px;margin:8px 0 20px}
 .detail-contact-note a{color:var(--navy);font-weight:600}
 
+/* ---- who a listing is attributed to ---- */
+.detail-listing-credit{margin-top:22px;padding:18px 20px;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:14px;background:var(--cream)}
+.detail-credit-label{margin:0;font-size:.68rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--grey)}
+.detail-credit-name{margin:6px 0 0;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.detail-credit-name a{font-size:1.06rem;font-weight:700;color:var(--navy)}
+.detail-credit-name span{font-size:.84rem;color:var(--grey)}
+.detail-credit-phone{margin:8px 0 0;display:flex;gap:14px;font-size:.9rem}
+.detail-credit-phone a{color:var(--grey)}
+
+/* ---- description builder in the admin desk ---- */
+.description-builder .field-hint{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.description-preview{display:block;margin:6px 0;line-height:1.55;color:var(--charcoal)}
+
+/* ---- desktop detail layout ----
+   .detail-shell sets its own max-width, and it is declared after the .shell
+   breakpoint further up the file, so it needs its own desktop rules or the page
+   stays a 480px column on a wide screen. */
+.detail-desktop-header{display:none}
+@media(min-width:768px){
+  .detail-desktop-header{display:block}
+  .detail-shell{max-width:1080px;padding-left:32px;padding-right:32px;padding-bottom:24px}
+  .detail-gallery{margin:0 -32px;aspect-ratio:16/10}
+  .detail-title-block h1{font-size:32px}
+  .detail-brief-price{font-size:42px}
+  .detail-brief-price span{font-size:16px}
+  .detail-specs-line{font-size:14px}
+  .detail-amenities{padding:18px 0 6px;flex-wrap:wrap;overflow:visible}
+  .detail-amenities span{font-size:12px;padding:9px 14px}
+  .detail-section h2,.similar-section h2{font-size:21px}
+  .detail-section p{font-size:15px;line-height:1.6}
+  .detail-description-box{padding:22px;border-radius:18px}
+  .detail-media-link{justify-content:flex-start}
+  .similar-grid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+  .similar-body strong{font-size:14px}
+  .similar-body span{font-size:11px}
+  .similar-body b{font-size:16px}
+  .detail-contact-note{text-align:left;margin:0}
+}
+@media(min-width:1024px){
+  .detail-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.8fr);column-gap:36px;align-items:start}
+  .detail-aside{position:sticky;top:92px;display:flex;flex-direction:column;gap:20px}
+  .detail-aside .detail-title-block{padding-top:0}
+  .detail-aside .detail-section{padding-top:0}
+  .detail-aside .detail-amenities{padding:0}
+  .detail-aside .detail-media-link{padding:0}
+}
+
 /* ---- compact 480px front page brief ---- */
 .public-shell{max-width:480px;padding-left:16px;padding-right:16px}
 .home-shell{max-width:480px}

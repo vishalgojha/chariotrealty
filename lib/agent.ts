@@ -1,5 +1,7 @@
 export type AgentMessage = { role: "user" | "agent"; text: string };
 
+import { generatePublicDescription } from "@/lib/listing-description";
+
 const SARVAM_MODEL = "sarvam-105b";
 const SARVAM_URL = "https://api.sarvam.ai/v1/chat/completions";
 
@@ -825,7 +827,7 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
     source.message_timestamp ? `at ${source.message_timestamp}` : "",
   ].filter(Boolean).join(" · ");
 
-  const extraction = {
+  const extraction: Record<string, unknown> = {
     extracted_at: new Date().toISOString(),
     extracted_by: SARVAM_MODEL,
     tool: "extract_whatsapp_listing",
@@ -833,9 +835,26 @@ async function extractWhatsappListing(args: Record<string, unknown>): Promise<st
     source_label: sourceLabel,
     source_text: sourceText,
     source_message_type: String(source.message_type || ""),
+    // Kept as separate fields as well, so the admin can show who supplied a
+    // listing without parsing the label back apart. Never published.
+    source_sender: source.sender || "",
+    source_group: source.is_group ? source.group_name || "" : "",
+    source_phone: source.sender_phone || "",
+    source_message_at: source.message_timestamp || "",
     discarded_ungrounded_fields: ungrounded,
     fields,
   };
+
+  // Written here so publishing the draft needs no second step, but a copy
+  // failure must not cost us the listing: the public page falls back to the
+  // structured description until one is generated from the admin desk.
+  let publicDescription = "";
+  try {
+    publicDescription = await generatePublicDescription(sourceText, [String(source.sender || ""), String(source.is_group ? source.group_name || "" : "")]);
+    extraction.public_description = publicDescription;
+  } catch {
+    extraction.public_description_error = "Could not write a description from this message. Use the description box in the admin Inventory tab.";
+  }
 
   const description = typeof args.description === "string" && args.description.trim()
     ? args.description.trim()

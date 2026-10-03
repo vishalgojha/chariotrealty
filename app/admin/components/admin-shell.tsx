@@ -10,6 +10,7 @@ import { MarketsTab } from "./markets-tab";
 import { OverviewTab } from "./overview-tab";
 import { WhatsappTab, type Notify } from "./whatsapp-tab";
 import { Icon, Toast, type ToastTone } from "./ui";
+import { InstallApp } from "@/components/install-app";
 
 const NAV: { id: TabId; label: string; hint: string; icon: string }[] = [
   { id: "overview", label: "Overview", hint: "Live market view", icon: "grid" },
@@ -83,6 +84,7 @@ export function AdminShell({ auth }: { auth: AdminAuth }) {
             </div>
             <div className="topbar-actions">
               <span className="signed-in">{tab === "overview" ? "Everything synced" : "Synced securely"}</span>
+              <InstallApp />
               <a href="/" className="btn btn-light btn-sm">
                 <Icon name="external" size={15} />
                 Public site

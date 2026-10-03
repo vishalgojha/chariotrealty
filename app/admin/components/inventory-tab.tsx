@@ -6,7 +6,7 @@ import { readStoredSession } from "../lib/session";
 import type { CmsField, CmsProperty, CmsFieldType, TypedDraft } from "../lib/types";
 import { FIELD_TYPE_OPTIONS, sourceLabel } from "../lib/types";
 import type { AdminApi } from "../hooks/use-admin-auth";
-import { Note, Panel, PanelHead, Pill } from "./ui";
+import { Icon, Note, Panel, PanelHead, Pill } from "./ui";
 import type { Notify } from "./whatsapp-tab";
 
 const MARKETS = ["Bandra West", "Bandra East", "BKC", "Khar", "Santacruz"];
@@ -35,18 +35,26 @@ const EMPTY_FORM = {
 
 const EMPTY_DRAFT = { label: "", field_type: "text" as CmsFieldType, required: false };
 
+// The box the description generator works from. Anything typed here is notes for
+// the model, never published text, so it is deliberately generous with length.
+const NOTES_PLACEHOLDER =
+  "Paste the WhatsApp forward, or just type what you know — 3 BHK, 1150 sqft, 4th floor, Pali Hill, rent 2.8L, two covered parking spaces, possession December, gym and pool in the building.";
+
 export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify }) {
   const [properties, setProperties] = useState<CmsProperty[]>([]);
   const [fields, setFields] = useState<CmsField[]>([]);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [fieldBusy, setFieldBusy] = useState(false);
-  const [customValues, setCustomValues] = useState<Record<string, string | number | boolean>>({});
+  const [customValues, setCustomValues] = useState<Record<string, string | number | boolean | string[]>>({});
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [typedDrafts, setTypedDrafts] = useState<TypedDraft[]>([]);
+  const [notes, setNotes] = useState("");
+  const [writing, setWriting] = useState(false);
+  const [description, setDescription] = useState("");
 
   const loadAll = useCallback(async () => {
     const [inventoryResponse, fieldsResponse, draftsResponse] = await Promise.all([
@@ -97,7 +105,9 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       const body = {
         ...form,
         ...(editing && form.id ? { id: form.id } : {}),
-        custom_fields: customValues,
+        // The generated description rides along with the other custom fields, so
+        // it is stored under the one key the public site is allowed to read.
+        custom_fields: { ...customValues, ...(description.trim() ? { public_description: description.trim() } : {}) },
         carpet_area_sqft: form.carpet_area_sqft ? Number(form.carpet_area_sqft) : null,
       };
       const response = editing ? await api.patch(`/api/inventory/${form.id}`, body) : await api.post("/api/inventory", body);
@@ -109,6 +119,8 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       setCustomValues({});
       setForm(EMPTY_FORM);
       setEditing(false);
+      setNotes("");
+      setDescription("");
       notify(editing ? "Draft updated" : form.status === "published" ? "Published to the website" : `Saved as ${form.status}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save property");
@@ -117,9 +129,28 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     }
   }
 
+  // The model reads notes, not the stored source message, so an existing listing
+  // is loaded with its own description already in the box for editing.
+  async function writeDescription() {
+    setWriting(true);
+    setError("");
+    try {
+      const response = await api.post("/api/inventory/description", { notes });
+      const payload = await readJson(response);
+      if (!response.ok) throw new Error(payload.error || "Could not write a description");
+      setDescription(String(payload.data?.description || ""));
+      notify("Description written — save to publish it");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not write a description");
+    } finally {
+      setWriting(false);
+    }
+  }
+
   function startEdit(property: CmsProperty) {
     setEditing(true);
     setCustomValues(property.custom_fields || {});
+    setDescription(String((property.custom_fields as Record<string, unknown> | undefined)?.public_description || ""));
     setError("");
     setForm({
       id: property.id,
@@ -142,6 +173,8 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     setEditing(false);
     setCustomValues({});
     setForm(EMPTY_FORM);
+    setNotes("");
+    setDescription("");
     setError("");
   }
 
@@ -380,6 +413,30 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
               {busy && <em> Uploading…</em>}
             </small>
           </label>
+          <div className="field description-builder">
+            <span>Website description</span>
+            <textarea
+              className="textarea"
+              rows={4}
+              placeholder={NOTES_PLACEHOLDER}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <small className="field-hint">
+              Paste the WhatsApp forward or type what you know. The AI writes the public description from it.
+              <button type="button" className="btn btn-light btn-sm" onClick={writeDescription} disabled={writing || notes.trim().length < 12}>
+                <Icon name="spark" size={14} />
+                {writing ? "Writing…" : "Write description"}
+              </button>
+            </small>
+          </div>
+          {description ? (
+            <Note tone="success">
+              <strong>Description</strong>
+              <span className="description-preview">{description}</span>
+              <small className="field-hint">Saved with the listing. Names and numbers are stripped automatically.</small>
+            </Note>
+          ) : null}
           {fields.map((field) => (
             <label className="field" key={field.id}>
               <span>{field.label}</span>

@@ -61,15 +61,7 @@ export function organizationJsonLd(): JsonLd[] {
       knowsAbout: ["Residential real estate in Mumbai", "Corporate rentals in BKC", "Grade-A office leasing in Bandra-Kurla Complex"],
       brand: { "@type": "Brand", name: "Chariot Realty" },
     }),
-    jsonLd(`${SITE}/#agent`, {
-      "@type": "Person",
-      name: "Kapil Gopal Ojha",
-      jobTitle: "Principal Broker & Founder, Chariot Realty",
-      worksFor: { "@id": `${SITE}/#org` },
-      telephone: PHONE_TEL,
-      url: `${SITE}/about`,
-      sameAs: [INSTAGRAM, WHATSAPP],
-    }),
+    agentNode(),
   ];
 }
 
@@ -159,6 +151,9 @@ export function listingJsonLd(p: ChariotProperty): JsonLd[] {
       areaServed: { "@type": "Place", name: p.locality ?? "Mumbai" },
       seller: { "@id": `${SITE}/#org` },
     },
+    // Kapil is named as the person behind the listing; the brokerage behind him
+    // stays Chariot Realty. Neither is the supplier the listing came from.
+    provider: { "@id": `${SITE}/#agent` },
     broker: { "@id": `${SITE}/#org` },
     sourceOrganization: { "@id": `${SITE}/#org` },
   };
@@ -173,7 +168,26 @@ export function listingJsonLd(p: ChariotProperty): JsonLd[] {
     ],
   };
 
-  return [property, breadcrumb];
+  return [property, agentNode(), breadcrumb];
+}
+
+/**
+ * Kapil as the person the listing is attributed to.
+ *
+ * Listings arrive from brokers and WhatsApp groups, and the sender is kept
+ * internally only. The page credits Kapil as the listing provider, so a third
+ * party is never named as the contact on a public listing.
+ */
+function agentNode(): JsonLd {
+  return jsonLd(`${SITE}/#agent`, {
+    "@type": "Person",
+    name: "Kapil Gopal Ojha",
+    jobTitle: "Principal Broker & Founder, Chariot Realty",
+    worksFor: { "@id": `${SITE}/#org` },
+    telephone: PHONE_TEL,
+    url: `${SITE}/about`,
+    sameAs: [INSTAGRAM, WHATSAPP],
+  });
 }
 
 /** Reusable FAQPage JSON-LD for about + neighborhoods index. */
