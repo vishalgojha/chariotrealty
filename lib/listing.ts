@@ -359,19 +359,21 @@ export function priceCards(listing: Listing): PriceCard[] {
   ];
 }
 
-export type ListingFilter = "all" | "buy" | "rent" | "commercial";
+export type ListingFilter = "all" | "buy" | "rent" | "commercial" | "under-construction";
 
 export const LISTING_FILTERS: { value: ListingFilter; label: string }[] = [
   { value: "all", label: "All listings" },
   { value: "buy", label: "For Sale" },
   { value: "rent", label: "For Rent" },
   { value: "commercial", label: "Commercial" },
+  { value: "under-construction", label: "Under Construction" },
 ];
 
 export function matchesFilter(listing: Listing, filter: ListingFilter): boolean {
   if (filter === "all") return true;
   if (filter === "commercial") return listing.category === "commercial";
   if (filter === "rent") return listing.priceUnit === "monthly_rent";
+  if (filter === "under-construction") return listing.category === "under-construction";
   return listing.priceUnit !== "monthly_rent" && listing.category !== "commercial";
 }
 
