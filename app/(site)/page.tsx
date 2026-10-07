@@ -77,7 +77,7 @@ export default function Home() {
             <span className="brand-logo">
               <img src="/apple-touch-icon.png" alt="" />
             </span>
-            <span>
+            <span className="brand-text">
               <span className="brand-name">
                 Chariot <span>Realty</span>
               </span>
