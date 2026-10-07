@@ -25,7 +25,7 @@ function resolveSha() {
 // which code a container is running. It covers every source file, not a
 // hand-picked list: a fixed list silently keeps matching after a change
 // elsewhere in the tree.
-const ROOTS = ["app", "lib", "scripts"];
+const ROOTS = ["app", "lib", "components", "scripts"];
 const SOURCE = /\.(ts|tsx|mjs|js|json|css)$/;
 const SKIP = /(build-info\.generated|tsbuildinfo|node_modules|\.next)/;
 
