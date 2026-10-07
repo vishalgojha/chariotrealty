@@ -31,17 +31,12 @@ export function ListingCard({ listing }: { listing: Listing }) {
 
       <div className="listing-body">
         <h3 className="listing-title">{listing.name}</h3>
-        <p className="loc">{listing.location}</p>
-        {listing.specsLine ? <p className="listing-specs">{listing.specsLine}</p> : null}
         <p className="listing-price">
           {listing.price}
           {listing.priceNote ? <span>{listing.priceNote}</span> : null}
         </p>
         <div className="rule" />
         <div className="listing-foot">
-          <a className="listing-detail-link" href={`/properties/${listing.slug}`}>
-            View details <span aria-hidden="true">→</span>
-          </a>
           {listing.mediaLinks.length ? <a className="pill pill-ghost pill-sm" href={listing.mediaLinks[0].href} target="_blank" rel="noreferrer">
             {listing.mediaLinks[0].label === "Instagram Reel" ? <InstagramIcon size={14} /> : null}{listing.mediaLinks[0].label}
           </a> : null}

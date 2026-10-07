@@ -71,7 +71,7 @@ export function AuthGate({ auth }: { auth: AdminAuth }) {
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <img className="auth-logo-image" src="/images.jpeg" alt="Chariot Realty" />
+        <img className="auth-logo-image" src="/apple-touch-icon.png" alt="Chariot Realty" />
         <p className="admin-eyebrow">Chariot Realty · Mumbai</p>
         <h1>{title}</h1>
         <p className="auth-lede">{lede}</p>

@@ -131,8 +131,7 @@ export default function Home() {
           <div className="section">
             <div className="section-head">
               <div>
-                <p className="kicker">Curated homes, rentals &amp; workspaces</p>
-                <h2>Find your next address</h2>
+                <h2>Current Opportunities</h2>
               </div>
             </div>
           </div>

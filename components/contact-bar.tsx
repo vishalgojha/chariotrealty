@@ -8,7 +8,7 @@ export function ContactBar({ message }: { message?: string }) {
         <WhatsAppIcon size={16} /> WhatsApp
       </a>
       <a className="pill pill-outline" href={`tel:${PHONE_TEL}`}>
-        <PhoneIcon size={15} /> Call {PHONE_DISPLAY}
+        <PhoneIcon size={15} /> CALL {PHONE_DISPLAY}
       </a>
     </div>
   );

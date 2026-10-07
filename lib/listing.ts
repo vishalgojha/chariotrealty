@@ -112,6 +112,7 @@ export type Listing = {
   waMessage: string;
   mediaLinks: ListingMediaLink[];
   specsLine: string;
+  tagline?: string;
 };
 
 export function waLink(message: string): string {
@@ -287,6 +288,9 @@ export function toListing(row: ChariotProperty): Listing {
   const specsLine = [row.configuration, row.carpetAreaSqft ? `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft` : ""]
     .filter(Boolean)
     .join(" • ");
+  const tagline = typeof row.customFields?.tagline === "string"
+    ? sanitizePublicCopy(row.customFields.tagline, rowIdentityTerms(row)) || undefined
+    : undefined;
 
   return {
     slug: row.slug,
@@ -313,6 +317,7 @@ export function toListing(row: ChariotProperty): Listing {
     waMessage: `Hi Kapil, I'm interested in ${(row.name || "").trim()} (${area || row.locality}, ${priceText}).`,
     mediaLinks,
     specsLine,
+    tagline,
   };
 }
 

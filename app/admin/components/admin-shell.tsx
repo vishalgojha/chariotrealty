@@ -50,7 +50,7 @@ export function AdminShell({ auth }: { auth: AdminAuth }) {
       <div className="admin-frame">
         <aside className="admin-sidebar">
           <div className="side-brand">
-             <img className="brand-logo-image" src="/images.jpeg" alt="Chariot Realty" />
+             <img className="brand-logo-image" src="/apple-touch-icon.png" alt="Chariot Realty" />
             <small>Market desk · Mumbai</small>
           </div>
           <nav className="side-nav" aria-label="Market desk sections">

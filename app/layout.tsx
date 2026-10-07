@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   // No manifest here. Only one can apply per page, and the public site and the
   // desk each need their own; they are declared in their own layouts.
   icons: {
-    icon: ["/favicon.ico", "/icon.svg"],
+    icon: ["/favicon.ico", "/favicon.png"],
     apple: "/apple-touch-icon.png",
   },
   appleWebApp: {

@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon, CheckIcon, InstagramIcon, PhoneIcon, WhatsAppIcon } from "@/components/icons";
+import { ArrowLeftIcon, CheckIcon, InstagramIcon, WhatsAppIcon } from "@/components/icons";
 import { ContactBar } from "@/components/contact-bar";
 import { SiteHeader } from "@/components/site-header";
-import { LISTING_CREDIT, PHONE_DISPLAY, PHONE_TEL, waLink, type Listing } from "@/lib/listing";
+import { waLink, type Listing } from "@/lib/listing";
 
 function SimilarCard({ listing }: { listing: Listing }) {
   const cover = listing.media[0];
@@ -19,7 +19,7 @@ function SimilarCard({ listing }: { listing: Listing }) {
         <strong>{listing.configuration || listing.name}</strong>
         <span>{listing.location}</span>
         <b>{listing.price}{listing.priceNote ? ` ${listing.priceNote}` : ""}</b>
-        {listing.amenities.length ? <div className="similar-tags">{listing.amenities.slice(0, 2).map((amenity) => <em key={amenity}>{amenity}</em>)}</div> : null}
+        {listing.amenities.length ? <div className="similar-tags"><em>{listing.amenities.slice(0, 2).join(" • ")}</em></div> : null}
       </div>
     </a>
   );
@@ -95,13 +95,14 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
             <h1>{listing.name}</h1>
             <p className="detail-brief-price">{listing.price}{listing.priceNote ? <span>{listing.priceNote}</span> : null}</p>
             {listing.specsLine ? <p className="detail-specs-line">{listing.specsLine}</p> : null}
+            {listing.tagline ? <p className="detail-tagline">{listing.tagline}</p> : null}
           </section>
 
           {listing.amenities.length ? <div className="detail-amenities">{listing.amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div> : null}
 
           {listing.description ? (
-            <section className="detail-section detail-description-box">
-              <div className="detail-section-heading"><h2>Description</h2><span>Verified listing data</span></div>
+            <section className="detail-section">
+              <h2>Description</h2>
               <p>{listing.description}</p>
             </section>
           ) : null}
@@ -113,18 +114,6 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
               </a>)}
             </div>
           ) : null}
-
-          <div className="detail-listing-credit">
-            <p className="detail-credit-label">Listed by</p>
-            <p className="detail-credit-name">
-              <a href={`tel:${LISTING_CREDIT.tel}`}>{LISTING_CREDIT.name}</a>
-              <span>{LISTING_CREDIT.role}</span>
-            </p>
-            <p className="detail-credit-phone">
-              <a href={`tel:${LISTING_CREDIT.tel}`}>{LISTING_CREDIT.phone}</a>
-              <a href={LISTING_CREDIT.whatsapp} target="_blank" rel="noreferrer">WhatsApp</a>
-            </p>
-          </div>
         </div>
       </div>
 
