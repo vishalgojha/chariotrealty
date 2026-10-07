@@ -1,4 +1,4 @@
-import { CheckIcon, InstagramIcon } from "@/components/icons";
+import { ArrowRightIcon, CheckIcon, InstagramIcon } from "@/components/icons";
 import { type Listing } from "@/lib/listing";
 
 export function ListingCard({ listing }: { listing: Listing }) {
@@ -40,6 +40,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
           {listing.mediaLinks.length ? <a className="pill pill-ghost pill-sm" href={listing.mediaLinks[0].href} target="_blank" rel="noreferrer">
             {listing.mediaLinks[0].label === "Instagram Reel" ? <InstagramIcon size={14} /> : null}{listing.mediaLinks[0].label}
           </a> : null}
+          <span className="listing-go"><ArrowRightIcon size={12} /></span>
         </div>
       </div>
     </article>
