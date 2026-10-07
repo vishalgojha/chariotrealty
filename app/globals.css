@@ -42,8 +42,7 @@ img{max-width:100%;display:block}
 .brand-sub{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--grey);font-weight:600}
 .topnav{display:none;gap:24px;font-size:13px;color:var(--grey);font-weight:500}
 .topnav a:hover{color:var(--navy)}
-.topbar .brand-name,.topbar .brand-sub{display:none}
-@media(min-width:768px){.topnav{display:flex}.topbar .brand-name,.topbar .brand-sub{display:block}}
+@media(min-width:768px){.topnav{display:flex}}
 
 /* ---- pills & buttons ---- */
 .pill{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--r-pill);font-weight:600;font-size:13px;padding:10px 16px;border:1px solid transparent;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,background .15s ease,border-color .15s ease,color .15s ease}
