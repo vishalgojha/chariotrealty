@@ -280,8 +280,11 @@ export function toListing(row: ChariotProperty): Listing {
   const amenities = backendAmenities.length ? backendAmenities : [];
   const mediaLinks: ListingMediaLink[] = [];
   const reelUrl = customUrl(row, ["reel_url", "instagram_reel_url", "instagram"]);
+  const imageUrl = row.image || "";
+  const imageReelUrl = imageUrl.includes("instagram.com") ? imageUrl : undefined;
   const driveUrl = customUrl(row, ["drive_url", "drive_photos_url", "photos_url"]);
   if (reelUrl) mediaLinks.push({ label: "Instagram Reel", href: reelUrl });
+  else if (imageReelUrl) mediaLinks.push({ label: "Instagram Reel", href: imageReelUrl });
   else if (driveUrl) mediaLinks.push({ label: "Google Drive Photos", href: driveUrl });
 
   const priceText = `${price.price}${price.note ? ` ${price.note}` : ""}`;
