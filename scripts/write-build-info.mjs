@@ -69,3 +69,4 @@ writeFileSync(
     `export const BUILD_FINGERPRINT = ${JSON.stringify(print)};\n`,
 );
 console.log(`[build-info] commit ${sha} fingerprint ${print}`);
+// force rebuild
