@@ -116,7 +116,12 @@ export default function Home() {
             {!featuredSlide ? <div className="featured-placeholder">Photos coming soon</div> : null}
             <div className="featured-copy">
               <h3>{featured.name}</h3>
-              <p className="featured-sub">{featured.summary}</p>
+              {featured.location ? <p className="featured-loc">{featured.location}</p> : null}
+              <p className="featured-sub">{featured.specsLine}</p>
+              <p className="featured-price">
+                {featured.price}
+                {featured.priceNote ? <span>{featured.priceNote}</span> : null}
+              </p>
               <div className="featured-cta">
                 <a className="pill pill-white pill-sm" href={`/properties/${featured.slug}`}>
                   View <ArrowRightIcon size={13} />

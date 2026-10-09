@@ -636,7 +636,10 @@ img{max-width:100%;display:block}
 .featured-copy{position:relative;z-index:1;max-width:78%}
 .featured-media{display:none}
 .featured h3{font-size:20px;margin:34px 0 5px;color:#fff}
-.featured-sub{color:var(--gold);font-weight:600;margin:0 0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.featured-loc{color:rgba(255,255,255,.6);font-size:12px;margin:0 0 4px}
+.featured-sub{color:rgba(255,255,255,.85);font-weight:400;font-size:13px;margin:0 0 8px}
+.featured-price{font-size:20px;font-weight:700;color:var(--gold);margin:0 0 14px}
+.featured-price span{font-size:12px;font-weight:600;color:rgba(255,255,255,.72);margin-left:4px}
 .featured-dots{position:absolute;z-index:2;left:0;right:0;bottom:8px;display:flex;justify-content:center;gap:5px}
 .featured-dots button{width:5px;height:5px;padding:0;border:0;border-radius:999px;background:rgba(255,255,255,.55);cursor:pointer}
 .featured-dots button.active{width:16px;background:var(--gold)}
