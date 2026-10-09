@@ -668,7 +668,15 @@ function isGroundedIn(value: string, sourceText: string): boolean {
 // Sale vs rent is decided by the message, not by the model, so a rent listing
 // can never be filed into the sale table.
 function inferTransaction(sourceText: string): "rent" | "sale" {
-  return /\b(lease|leased|on rent|rented|monthly rent|per month|rent pm|leave and licence|licence fee)\b/i.test(sourceText) ? "rent" : "sale";
+  if (
+    /\b(lease|leased|on rent|for rent|rented|monthly rent|per month|per mo|rent pm|monthly|a month|leave and licence|licence fee)\b/i.test(sourceText) ||
+    /(?:\/|\s+)\s*(?:month|mo|mth)\b/i.test(sourceText) ||
+    /\b\d[\d,.]*\s*(?:l|lacs?|lakhs?|cr|k|thousand)?\s*\/?\s*mo(?:nth)?(?:ly)?\b/i.test(sourceText) ||
+    /\b\d[\d,.]*\s*(?:l|lacs?|lakhs?|cr|k|thousand)\s*\/?\s*pm\b/i.test(sourceText)
+  ) {
+    return "rent";
+  }
+  return "sale";
 }
 
 function inferCategory(sourceText: string): "residential" | "commercial" {
