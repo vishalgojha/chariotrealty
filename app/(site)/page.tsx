@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { ContactBar } from "@/components/contact-bar";
 import { ListingCard } from "@/components/listing-card";
-import { ArrowRightIcon, ChevronDownIcon, InstagramIcon, SearchIcon, WhatsAppIcon } from "@/components/icons";
+import { ChevronDownIcon, InstagramIcon, SearchIcon, WhatsAppIcon } from "@/components/icons";
 import {
   LISTING_FILTERS,
   matchesFilter,
@@ -25,8 +25,6 @@ export default function Home() {
   const [modal, setModal] = useState<LeadKind | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
-  const [featuredIndex, setFeaturedIndex] = useState(0);
-  const featuredTouch = useRef<number | null>(null);
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem(SCROLL_KEY);
@@ -57,12 +55,6 @@ export default function Home() {
   }, []);
 
   const visible = useMemo(() => searchListings(listings.filter((listing) => matchesFilter(listing, filter)), query), [listings, filter, query]);
-  const featured = visible[0] ?? listings[0];
-  const featuredSlide = featured?.media[featuredIndex] ?? featured?.media[0];
-
-  useEffect(() => {
-    setFeaturedIndex(0);
-  }, [featured?.slug]);
 
   function resetFilters() {
     setFilter("all");
@@ -98,40 +90,6 @@ export default function Home() {
       </header>
 
       <main className="shell public-shell home-shell" id="top">
-        {featured ? (
-          <div
-            className="featured"
-            style={{ marginTop: 20, backgroundImage: featuredSlide ? `url('${featuredSlide.url}')` : undefined }}
-            onTouchStart={(event) => { featuredTouch.current = event.touches[0].clientX; }}
-            onTouchEnd={(event) => {
-              if (featuredTouch.current === null) return;
-              const delta = event.changedTouches[0].clientX - featuredTouch.current;
-              featuredTouch.current = null;
-              if (delta < -40) setFeaturedIndex((current) => Math.min(current + 1, featured.media.length - 1));
-              if (delta > 40) setFeaturedIndex((current) => Math.max(current - 1, 0));
-            }}
-          >
-            <span className="featured-shade" />
-            <span className="badge-featured">Featured</span>
-            {!featuredSlide ? <div className="featured-placeholder">Photos coming soon</div> : null}
-            <div className="featured-copy">
-              <h3>{featured.name}</h3>
-              {featured.location ? <p className="featured-loc">{featured.location}</p> : null}
-              <p className="featured-sub">{featured.specsLine}</p>
-              <p className="featured-price">
-                {featured.price}
-                {featured.priceNote ? <span>{featured.priceNote}</span> : null}
-              </p>
-              <div className="featured-cta">
-                <a className="pill pill-white pill-sm" href={`/properties/${featured.slug}`}>
-                  View <ArrowRightIcon size={13} />
-                </a>
-              </div>
-            </div>
-            {featured.media.length > 1 ? <div className="featured-dots" aria-label="Featured photos">{featured.media.map((slide, index) => <button type="button" aria-label={`Featured photo ${index + 1}`} key={slide.url} className={index === featuredIndex ? "active" : ""} onClick={(event) => { event.preventDefault(); setFeaturedIndex(index); }} />)}</div> : null}
-          </div>
-        ) : null}
-
         <section id="opportunities">
           <div className="section">
             <div className="section-head">
