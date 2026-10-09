@@ -381,6 +381,51 @@ function pick(row: Record<string, unknown>, table: string) {
   };
 }
 
+// The published site inventory lives in chariot_properties; the internal typed
+// tables only hold extraction drafts. Search should report the real inventory
+// the broker actually has listed, so published chariot_properties rows are
+// merged into the results.
+function pickPublished(row: Record<string, unknown>) {
+  const priceUnit = String(row.price_unit || "");
+  const price = row.price_value ?? row.price ?? null;
+  return {
+    name: (row.name as string) || (row.slug as string) || (row.locality as string) || "Unnamed",
+    locality: (row.locality as string) || (row.location as string) || (row.micro_market as string) || "",
+    price,
+    area: (row.carpet_area_sqft ?? null) as number | null,
+    bhk: (row.configuration ?? null) as string | number | null,
+    status: (row.status as string) || "",
+    details: priceUnit ? String(priceUnit) : (row.category as string) || "",
+  };
+}
+
+async function searchPublished(args: SearchArgs): Promise<Array<Record<string, unknown>>> {
+  const category = args.category || "residential";
+  const transaction = args.transaction || "sale";
+  const parts = [`select=*`, `order=created_at.desc`, `limit=${Math.min(args.limit ?? 5, 10)}`];
+  parts.push(`status=eq.published`);
+  const priceUnit = transaction === "rent"
+    ? ["monthly_rent"]
+    : ["total_price", "price_on_request"];
+  const unitFilter = priceUnit.map((u) => `price_unit=eq.${u}`).join(",");
+  parts.push(`or=(${unitFilter})`);
+  if (category === "commercial") {
+    parts.push(`category=eq.commercial`);
+  } else if (category === "under-construction") {
+    parts.push(`category=eq.under-construction`);
+  } else {
+    parts.push(`or=(category=eq.residential,category=eq.under-construction,category=eq.land)`);
+  }
+  if (args.locality) {
+    parts.push(`or=(name.ilike.*${encodeURIComponent(args.locality)}*,locality.ilike.*${encodeURIComponent(args.locality)}*,location.ilike.*${encodeURIComponent(args.locality)}*,micro_market.ilike.*${encodeURIComponent(args.locality)}*)`);
+  }
+  if (typeof args.min_price === "number") parts.push(`price_value=gte.${args.min_price}`);
+  if (typeof args.max_price === "number") parts.push(`price_value=lte.${args.max_price}`);
+  if (typeof args.bhk === "number") parts.push(`configuration=ilike.*${args.bhk} BHK`);
+  const rows = await restSelect(`chariot_properties?${parts.join("&")}`);
+  return rows.slice(0, args.limit ?? 5).map((row) => pickPublished(row));
+}
+
 async function searchListings(args: SearchArgs): Promise<string> {
   const category = args.category || "residential";
   const transaction = args.transaction || "sale";
@@ -399,8 +444,14 @@ async function searchListings(args: SearchArgs): Promise<string> {
   if (typeof args.bhk === "number") parts.push(`bhk=eq.${args.bhk}`);
 
   const rows = await restSelect(`${table}?${parts.join("&")}`);
-  const results = rows.slice(0, args.limit ?? 5).map((row) => pick(row, table));
-  return JSON.stringify({ results });
+  const internal = rows.slice(0, args.limit ?? 5).map((row) => pick(row, table));
+  let published: Array<Record<string, unknown>> = [];
+  try {
+    published = await searchPublished(args);
+  } catch {
+    published = [];
+  }
+  return JSON.stringify({ results: [...published, ...internal].slice(0, args.limit ?? 5) });
 }
 
 async function matchProperties(args: MatchArgs): Promise<string> {
@@ -415,7 +466,7 @@ async function matchProperties(args: MatchArgs): Promise<string> {
   if (typeof args.min_price === "number") parts.push(`${priceCol}=gte.${args.min_price}`);
   const rows = await restSelect(`${table}?${parts.filter(Boolean).join("&")}`);
   const requestedLocality = args.locality?.toLowerCase().trim();
-  const scored = rows.map((row) => {
+  const internalScored = rows.map((row) => {
     const locality = String(row.locality_raw || row.locality_resolved || row.micro_market || "");
     const localityMatch = Boolean(requestedLocality && locality.toLowerCase().includes(requestedLocality));
     const bhkMatch = typeof args.bhk === "number" && Number(row.bhk) === args.bhk;
@@ -424,7 +475,24 @@ async function matchProperties(args: MatchArgs): Promise<string> {
     const score = (requestedLocality ? (localityMatch ? 40 : 0) : 20) + (typeof args.bhk === "number" ? (bhkMatch ? 35 : 0) : 20) + (typeof args.max_price === "number" || typeof args.min_price === "number" ? (budgetMatch ? 25 : 0) : 20);
     const reasons = [localityMatch && `locality matches ${args.locality}`, bhkMatch && `${args.bhk} BHK`, budgetMatch && "within budget"].filter(Boolean);
     return { ...pick(row, table), match_score: score, why: reasons.length ? reasons.join(", ") : "closest available internal listing" };
-  }).sort((a, b) => b.match_score - a.match_score || String(a.name).localeCompare(String(b.name)));
+  });
+  let publishedScored: Array<Record<string, unknown>> = [];
+  try {
+    publishedScored = (await searchPublished(args)).map((row) => {
+      const locality = String(row.locality || "");
+      const localityMatch = Boolean(requestedLocality && locality.toLowerCase().includes(requestedLocality));
+      const bhkText = String(row.bhk || "");
+      const bhkMatch = typeof args.bhk === "number" && bhkText.includes(String(args.bhk));
+      const price = Number(row.price);
+      const budgetMatch = Number.isFinite(price) && (typeof args.min_price !== "number" || price >= args.min_price) && (typeof args.max_price !== "number" || price <= args.max_price);
+      const score = (requestedLocality ? (localityMatch ? 40 : 0) : 20) + (typeof args.bhk === "number" ? (bhkMatch ? 35 : 0) : 20) + (typeof args.max_price === "number" || typeof args.min_price === "number" ? (budgetMatch ? 25 : 0) : 20);
+      const reasons = [localityMatch && `locality matches ${args.locality}`, bhkMatch && `${args.bhk} BHK`, budgetMatch && "within budget"].filter(Boolean);
+      return { ...row, match_score: score, why: reasons.length ? reasons.join(", ") : "published listing" };
+    });
+  } catch {
+    publishedScored = [];
+  }
+  const scored = [...publishedScored, ...internalScored].sort((a, b) => Number(b.match_score) - Number(a.match_score) || String(a.name).localeCompare(String(b.name)));
   return JSON.stringify({ results: scored.slice(0, Math.min(args.limit ?? 5, 10)) });
 }
 
