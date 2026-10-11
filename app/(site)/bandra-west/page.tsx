@@ -2,18 +2,18 @@ import { Metadata } from "next";
 import { WhatsAppIcon } from "@/components/icons";
 
 export const metadata: Metadata = {
-  title: "bandra-west Real Estate | Chariot Realty",
+  title: "Bandra West Real Estate | Chariot Realty",
   description: "Premium real estate in bandra-west with curated listings for luxury buyers and corporate tenants. WhatsApp +91 97737 57759.",
   alternates: { canonical: "https://chariotrealty.in/bandra-west" },
   openGraph: {
-    title: "bandra-west Real Estate | Chariot Realty",
+    title: "Bandra West Real Estate | Chariot Realty",
     description: "Curated luxury homes, rentals & corporate spaces in bandra-west.",
     url: "https://chariotrealty.in/bandra-west",
     images: [{ url: "/apple-touch-icon.png", width: 180, height: 180, alt: "Chariot Realty" }],
   },
   twitter: {
     card: "summary",
-    title: "bandra-west Real Estate | Chariot Realty",
+    title: "Bandra West Real Estate | Chariot Realty",
     description: "Curated luxury homes, rentals & corporate spaces in bandra-west.",
     images: ["/apple-touch-icon.png"],
   },
@@ -25,7 +25,7 @@ export default function Page() {
     <main className="shell public-shell" style={{ paddingTop: 20 }}>
       <section style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: "clamp(1.8rem,4vw,2.4rem)", fontWeight: 700, marginBottom: 12 }}>
-          bandra-west Real Estate
+          Bandra West Real Estate
         </h1>
         <p style={{ color: "var(--muted)", lineHeight: 1.6, maxWidth: 760 }}>
           Chariot Realty curates luxury homes, premium rentals, and corporate spaces in bandra-west with verified inventory and direct mandates for luxury buyers and corporate tenants.

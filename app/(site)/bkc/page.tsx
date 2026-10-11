@@ -2,18 +2,18 @@ import { Metadata } from "next";
 import { WhatsAppIcon } from "@/components/icons";
 
 export const metadata: Metadata = {
-  title: "bkc Real Estate | Chariot Realty",
+  title: "Bkc Real Estate | Chariot Realty",
   description: "Premium real estate in bkc with curated listings for luxury buyers and corporate tenants. WhatsApp +91 97737 57759.",
   alternates: { canonical: "https://chariotrealty.in/bkc" },
   openGraph: {
-    title: "bkc Real Estate | Chariot Realty",
+    title: "Bkc Real Estate | Chariot Realty",
     description: "Curated luxury homes, rentals & corporate spaces in bkc.",
     url: "https://chariotrealty.in/bkc",
     images: [{ url: "/apple-touch-icon.png", width: 180, height: 180, alt: "Chariot Realty" }],
   },
   twitter: {
     card: "summary",
-    title: "bkc Real Estate | Chariot Realty",
+    title: "Bkc Real Estate | Chariot Realty",
     description: "Curated luxury homes, rentals & corporate spaces in bkc.",
     images: ["/apple-touch-icon.png"],
   },
@@ -25,7 +25,7 @@ export default function Page() {
     <main className="shell public-shell" style={{ paddingTop: 20 }}>
       <section style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: "clamp(1.8rem,4vw,2.4rem)", fontWeight: 700, marginBottom: 12 }}>
-          bkc Real Estate
+          Bkc Real Estate
         </h1>
         <p style={{ color: "var(--muted)", lineHeight: 1.6, maxWidth: 760 }}>
           Chariot Realty curates luxury homes, premium rentals, and corporate spaces in bkc with verified inventory and direct mandates for luxury buyers and corporate tenants.
