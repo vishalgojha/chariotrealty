@@ -2,13 +2,23 @@ import { readSiteContent } from "@/lib/site-content";
 import type { Listing } from "@/lib/listing";
 import { HomeClient } from "@/components/home-client";
 
-import { readInventory } from "@/lib/inventory";
+import { toListing } from "@/lib/listing";
 
 async function getListings(): Promise<Listing[]> {
   try {
-    const { properties } = await readInventory();
-    console.log("Listings fetched:", properties.length);
-    return properties as unknown as Listing[];
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://chariotrealty.in";
+    const res = await fetch(`${baseUrl}/api/properties`, {
+      next: { revalidate: 60 },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.log("Listings fetched:", 0);
+      return [];
+    }
+    const data = await res.json();
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.listings) ? data.listings : [];
+    console.log("Listings fetched:", list.length);
+    return list.map((p: any) => toListing(p));
   } catch (e) {
     console.error("Failed to fetch listings:", e);
     return [];
