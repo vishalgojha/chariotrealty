@@ -37,10 +37,25 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const p = all.find((x) => x.slug === params.slug);
   if (!p) return {};
   const site = canonical();
+  const image = p.image || "/apple-touch-icon.png";
+  const desc = listingDescription(p);
   return {
     title: `${p.name} — ${p.locality} | Chariot Realty`,
-    description: listingDescription(p),
+    description: desc,
     alternates: { canonical: `${site}/properties/${p.slug}` },
+    openGraph: {
+      type: "article",
+      url: `${site}/properties/${p.slug}`,
+      title: `${p.name} — ${p.locality}`,
+      description: desc,
+      images: [{ url: image, alt: p.name }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${p.name} — ${p.locality}`,
+      description: desc,
+      images: [image],
+    },
   };
 }
 

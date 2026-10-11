@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
+import { AboutUs } from "@/components/about-us";
 import { ContactBar } from "@/components/contact-bar";
 import { ListingCard } from "@/components/listing-card";
 import { ChevronDownIcon, InstagramIcon, SearchIcon, WhatsAppIcon } from "@/components/icons";
@@ -94,7 +95,7 @@ export default function Home() {
           <div className="section">
             <div className="section-head">
               <div>
-                <h2>Current Opportunities</h2>
+                <h2>Exclusive Properties</h2>
               </div>
             </div>
           </div>
@@ -135,7 +136,7 @@ export default function Home() {
               </select>
             </span>
             <span className="count">
-              {visible.length} {visible.length === 1 ? "listing" : "listings"}
+              {loaded && !unavailable ? `${visible.length} ${visible.length === 1 ? "listing" : "listings"}` : <span className="skeleton-line sm" style={{width: 60}} />}
             </span>
           </div>
 
@@ -151,7 +152,13 @@ export default function Home() {
                 ? "Live inventory is temporarily unavailable. Message Kapil on WhatsApp for today's shortlist."
                 : loaded
                   ? "No listings match that search right now — message Kapil and we will send a shortlist."
-                  : "Loading live inventory…"}
+                  : (
+                    <div className="listing-grid">
+                      <div className="listing-skeleton" />
+                      <div className="listing-skeleton" />
+                      <div className="listing-skeleton" />
+                    </div>
+                  )}
             </p>
           )}
 
@@ -173,6 +180,8 @@ export default function Home() {
             </a>
           </div>
         </section>
+
+        <AboutUs />
 
         <footer className="site-footer">
           <div className="brand">

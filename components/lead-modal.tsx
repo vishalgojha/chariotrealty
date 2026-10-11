@@ -24,6 +24,8 @@ const COPY: Record<LeadKind, { title: string; blurb: string; cta: string; detail
 export function LeadModal({ kind, open, onClose }: { kind: LeadKind; open: boolean; onClose: () => void }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [area, setArea] = useState("");
+  const [budget, setBudget] = useState("");
   const [details, setDetails] = useState("");
   const copy = COPY[kind];
 
@@ -44,14 +46,15 @@ export function LeadModal({ kind, open, onClose }: { kind: LeadKind; open: boole
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    const message = [
+    const messageParts = [
       `Hi Kapil, I would like to ${kind === "requirement" ? "post a requirement" : "list a property"}.`,
       name ? `Name: ${name}` : "",
       phone ? `Phone: ${phone}` : "",
+      area ? `Area Preference: ${area}` : "",
+      budget ? `Budget: ${budget}` : "",
       details ? `Details: ${details}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ];
+    const message = messageParts.filter(Boolean).join("\n");
     window.open(waLink(message), "_blank", "noopener");
     onClose();
   }
@@ -77,6 +80,26 @@ export function LeadModal({ kind, open, onClose }: { kind: LeadKind; open: boole
           <div className="field">
             <label htmlFor="lead-phone">Phone</label>
             <input id="lead-phone" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder={PHONE_DISPLAY} inputMode="tel" autoComplete="tel" />
+          </div>
+          <div className="field">
+            <label htmlFor="lead-area">Area Preference</label>
+            <input
+              id="lead-area"
+              value={area}
+              onChange={(event) => setArea(event.target.value)}
+              placeholder="e.g. Bandra West, BKC"
+              autoComplete="off"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="lead-budget">Budget</label>
+            <input
+              id="lead-budget"
+              value={budget}
+              onChange={(event) => setBudget(event.target.value)}
+              placeholder="e.g. ₹2.5 L/mo or ₹4 Cr"
+              autoComplete="off"
+            />
           </div>
           <div className="field">
             <label htmlFor="lead-details">Details</label>

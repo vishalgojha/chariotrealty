@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: `${n.name} Real Estate`,
       description: n.intro[0] ?? "",
       url: `${site}/neighborhoods/${n.slug}`,
-      images: n.image ? [{ url: n.image }] : undefined,
+      images: n.image ? [{ url: n.image, alt: n.name }] : [{ url: '/apple-touch-icon.png', alt: 'Chariot Realty' }],
     },
   };
 }
