@@ -15,6 +15,7 @@ import {
   type Listing,
   type ListingFilter,
 } from "@/lib/listing";
+import { organizationJsonLd } from "@/lib/seo";
 
 const SCROLL_KEY = "chariot:listing-scroll";
 const INSTAGRAM = "https://instagram.com/chariotrealty.in";
@@ -181,6 +182,7 @@ export default function Home() {
           </div>
         </section>
 
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify([...organizationJsonLd()]) }} />
         <AboutUs />
 
         <footer className="site-footer">
