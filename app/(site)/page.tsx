@@ -1,217 +1,40 @@
-"use client";
+import { readSiteContent } from "@/lib/site-content";
+import type { Listing } from "@/lib/listing";
+import { HomeClient } from "@/components/home-client";
 
-import { useEffect, useMemo, useState } from "react";
-import { LeadModal, type LeadKind } from "@/components/lead-modal";
-import { AboutUs } from "@/components/about-us";
-import { ContactBar } from "@/components/contact-bar";
-import { ListingCard } from "@/components/listing-card";
-import { ChevronDownIcon, InstagramIcon, SearchIcon, WhatsAppIcon } from "@/components/icons";
-import {
-  LISTING_FILTERS,
-  matchesFilter,
-  searchListings,
-  toListing,
-  waLink,
-  type Listing,
-  type ListingFilter,
-} from "@/lib/listing";
-import { organizationJsonLd } from "@/lib/seo";
-
-const SCROLL_KEY = "chariot:listing-scroll";
-const INSTAGRAM = "https://instagram.com/chariotrealty.in";
-
-export default function Home() {
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [filter, setFilter] = useState<ListingFilter>("all");
-  const [query, setQuery] = useState("");
-  const [modal, setModal] = useState<LeadKind | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [unavailable, setUnavailable] = useState(false);
-
-  useEffect(() => {
-    const stored = window.sessionStorage.getItem(SCROLL_KEY);
-    if (stored) {
-      window.sessionStorage.removeItem(SCROLL_KEY);
-      window.scrollTo(0, Number(stored) || 0);
+async function getListings(): Promise<Listing[]> {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/properties`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) {
+      return [];
     }
-
-    let active = true;
-    fetch("/api/properties")
-      .then((response) => response.json())
-      .then((payload) => {
-        if (!active) return;
-        if (payload.degraded) {
-          setUnavailable(true);
-          return;
-        }
-        const rows = Array.isArray(payload.data) ? payload.data : [];
-        setListings(rows.map(toListing));
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) setLoaded(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const visible = useMemo(() => searchListings(listings.filter((listing) => matchesFilter(listing, filter)), query), [listings, filter, query]);
-
-  function resetFilters() {
-    setFilter("all");
-    setQuery("");
+    const data = await res.json();
+    if (Array.isArray(data?.listings)) {
+      return data.listings;
+    }
+    return [];
+  } catch {
+    return [];
   }
+}
 
-  return (
-    <>
-      <header className="topbar">
-        <div className="shell topbar-inner">
-          <a className="brand" href="/">
-            <span className="brand-logo">
-              <img src="/apple-touch-icon.png" alt="" />
-            </span>
-            <span className="brand-text">
-              <span className="brand-name">
-                Chariot <span>Realty</span>
-              </span>
-              <span className="brand-sub">Bandra · BKC</span>
-            </span>
-          </a>
+async function getAboutUs() {
+  try {
+    const content = await readSiteContent("about_us");
+    return content;
+  } catch {
+    return null;
+  }
+}
 
-          <nav className="topnav" aria-label="Sections">
-            <a href="#opportunities">Residential</a>
-            <a href="#opportunities">Commercial</a>
-            <a href="#opportunities">Under Construction</a>
-          </nav>
+export default async function Home() {
+  const [listings, aboutUs] = await Promise.all([
+    getListings(),
+    getAboutUs(),
+  ]);
 
-          <a className="pill pill-dark pill-sm" href={waLink("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")} target="_blank" rel="noreferrer">
-            <WhatsAppIcon size={15} /> WhatsApp
-          </a>
-        </div>
-      </header>
-
-      <main className="shell public-shell home-shell" id="top">
-        <section id="opportunities">
-          <div className="section">
-            <div className="section-head">
-              <div>
-                <h2>Exclusive Properties</h2>
-              </div>
-            </div>
-          </div>
-
-          <div className="actions">
-            <button type="button" className="pill pill-gold" onClick={() => setModal("requirement")}>
-              Post your requirement
-            </button>
-            <button type="button" className="pill pill-outline" onClick={() => setModal("listing")}>
-              List your property
-            </button>
-          </div>
-
-          <form className="search" onSubmit={(event) => event.preventDefault()} role="search">
-            <SearchIcon />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search 3 BHK, BKC…"
-              aria-label="Search listings"
-            />
-            <button type="submit" className="pill pill-gold pill-sm">
-              Search
-            </button>
-          </form>
-
-          <div className="filterbar">
-            <span className="select-chip">
-              {LISTING_FILTERS.find((option) => option.value === filter)?.label}
-              <ChevronDownIcon />
-              <select value={filter} onChange={(event) => setFilter(event.target.value as ListingFilter)} aria-label="Filter listings">
-                {LISTING_FILTERS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </span>
-            <span className="count">
-              {loaded && !unavailable ? `${visible.length} ${visible.length === 1 ? "listing" : "listings"}` : <span className="skeleton-line sm" style={{width: 60}} />}
-            </span>
-          </div>
-
-          {visible.length ? (
-            <div className="listing-grid">
-              {visible.map((listing) => (
-                <ListingCard key={listing.slug} listing={listing} />
-              ))}
-            </div>
-          ) : (
-            <p className="empty-state">
-              {unavailable
-                ? "Live inventory is temporarily unavailable. Message Kapil on WhatsApp for today's shortlist."
-                : loaded
-                  ? "No listings match that search right now — message Kapil and we will send a shortlist."
-                  : (
-                    <div className="listing-grid">
-                      <div className="listing-skeleton" />
-                      <div className="listing-skeleton" />
-                      <div className="listing-skeleton" />
-                    </div>
-                  )}
-            </p>
-          )}
-
-          {listings.length ? (
-            <div className="view-all">
-              <button type="button" className="pill pill-outline" onClick={resetFilters}>
-                View all {listings.length} listings
-              </button>
-            </div>
-          ) : null}
-
-          <div className="panel" style={{ marginTop: 26 }}>
-            <h4>Weekly site walkthroughs</h4>
-            <p className="loc" style={{ marginBottom: 14 }}>
-              Raw uncut tours, lobby reviews and off-market updates from Bandra &amp; BKC.
-            </p>
-            <a className="pill pill-outline pill-sm" href={INSTAGRAM} target="_blank" rel="noreferrer">
-              <InstagramIcon size={14} /> Follow @chariotrealty.in
-            </a>
-          </div>
-        </section>
-
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify([...organizationJsonLd()]) }} />
-        <AboutUs />
-
-        <footer className="site-footer">
-          <div className="brand">
-            <span className="brand-logo">
-              <img src="/apple-touch-icon.png" alt="" />
-            </span>
-            <p>
-              Chariot Realty
-              <br />
-              Bandra West · BKC · Bandra East · Khar · Santacruz
-            </p>
-          </div>
-          <p>
-            Kapil Gopal Ojha · +91 97737 57759
-            <br />
-            <a href={waLink("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")} target="_blank" rel="noreferrer">
-              WhatsApp
-            </a>{" "}
-            ·{" "}
-            <a href={INSTAGRAM} target="_blank" rel="noreferrer">
-              @chariotrealty.in
-            </a>
-          </p>
-        </footer>
-      </main>
-
-      <LeadModal kind={modal ?? "requirement"} open={modal !== null} onClose={() => setModal(null)} />
-      <ContactBar />
-    </>
-  );
+  return <HomeClient initialListings={listings} />;
 }
