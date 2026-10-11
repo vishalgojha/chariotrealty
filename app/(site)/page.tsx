@@ -2,21 +2,15 @@ import { readSiteContent } from "@/lib/site-content";
 import type { Listing } from "@/lib/listing";
 import { HomeClient } from "@/components/home-client";
 
+import { readInventory } from "@/lib/inventory";
+
 async function getListings(): Promise<Listing[]> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/properties`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) {
-      return [];
-    }
-    const data = await res.json();
-    if (Array.isArray(data?.listings)) {
-      return data.listings;
-    }
-    return [];
-  } catch {
+    const { properties } = await readInventory();
+    console.log("Listings fetched:", properties.length);
+    return properties as unknown as Listing[];
+  } catch (e) {
+    console.error("Failed to fetch listings:", e);
     return [];
   }
 }
