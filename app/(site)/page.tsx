@@ -8,7 +8,6 @@ async function getListings(): Promise<Listing[]> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://chariotrealty.in";
     const res = await fetch(`${baseUrl}/api/properties`, {
-      next: { revalidate: 60 },
       cache: "no-store",
     });
     if (!res.ok) {
