@@ -91,7 +91,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
 
   const cards: ListingCardProps[] = useMemo(
     () =>
-      filtered.slice(0, 12).map((l) => ({
+      filtered.filter((listing) => listing.category !== "under-construction").slice(0, 12).map((l) => ({
         slug: l.slug,
         title: l.name,
         location: l.location,
@@ -103,6 +103,26 @@ export function HomeClient({ initialListings }: HomeClientProps) {
         listingType: (l.price || "").toLowerCase().includes("/mo") ? "rent" : "buy",
         imageUrl: l.media?.[0]?.url,
         availability: undefined,
+        verified: l.badgeTone === "verified",
+        featured: false,
+      })),
+    [filtered],
+  );
+
+  const underConstructionCards: ListingCardProps[] = useMemo(
+    () =>
+      filtered.filter((listing) => listing.category === "under-construction").slice(0, 12).map((l) => ({
+        slug: l.slug,
+        title: l.name,
+        location: l.location,
+        microLocation: undefined,
+        priceLabel: l.price,
+        bedsLabel: l.configuration,
+        areaLabel: l.area,
+        propertyType: normalizeType(l.category),
+        listingType: "buy" as const,
+        imageUrl: l.media?.[0]?.url,
+        availability: l.badge,
         verified: l.badgeTone === "verified",
         featured: false,
       })),
@@ -131,7 +151,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
           <nav className="topnav" aria-label="Sections">
             <a href="#opportunities">Residential</a>
             <a href="#opportunities">Commercial</a>
-            <a href="#opportunities">Under Construction</a>
+            <a href="#under-construction">Under Construction</a>
           </nav>
           <div className="topbar-actions">
             <a className="pill pill-dark pill-sm topbar-call" href="tel:+919773757759">
@@ -229,6 +249,36 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                     }}
                   />
                 ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="section-block" id="under-construction">
+          <div className="shell">
+            <div className="section-head">
+              <div>
+                <p className="kicker">New Developments</p>
+                <h2>Under Construction</h2>
+                <p className="sub">A considered selection of new residences in Bandra and Juhu, with current availability and possession timelines.</p>
+              </div>
+            </div>
+            {underConstructionCards.length ? (
+              <div className="listing-grid listing-grid-lg">
+                {underConstructionCards.map((card) => (
+                  <ListingCard
+                    key={card.slug}
+                    {...card}
+                    onClick={(slug) => {
+                      window.sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+                      window.location.href = `/properties/${slug}`;
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state compact-empty">
+                <p>New projects are being curated. Message Kapil for the current launch shortlist.</p>
               </div>
             )}
           </div>

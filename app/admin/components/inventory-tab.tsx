@@ -4,12 +4,12 @@ import { FormEvent, ChangeEvent, useCallback, useEffect, useState } from "react"
 import { readJson } from "../lib/api";
 import { readStoredSession } from "../lib/session";
 import type { CmsField, CmsProperty, CmsFieldType, TypedDraft } from "../lib/types";
-import { FIELD_TYPE_OPTIONS, sourceLabel } from "../lib/types";
+import { CATEGORY_LABELS, FIELD_TYPE_OPTIONS, sourceLabel } from "../lib/types";
 import type { AdminApi } from "../hooks/use-admin-auth";
 import { Icon, Note, Panel, PanelHead, Pill } from "./ui";
 import type { Notify } from "./whatsapp-tab";
 
-const MARKETS = ["Bandra West", "Bandra East", "BKC", "Khar", "Santacruz"];
+const MARKETS = ["Bandra West", "Bandra East", "BKC", "Khar", "Santacruz", "Juhu"];
 
 const WORKFLOW = [
   { value: "draft", label: "Draft", hint: "Edit & save anytime" },
@@ -371,7 +371,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
             <select className="select" value={form.category} onChange={(e) => patch({ category: e.target.value })}>
               <option value="residential">Residential</option>
               <option value="commercial">Commercial</option>
-              <option value="under-construction">New launch</option>
+              <option value="under-construction">Under construction</option>
             </select>
           </label>
           <label className="field">
@@ -514,7 +514,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
                 {property.image_url && (property.media_type === "video" ? <video src={property.image_url} muted playsInline /> : <img src={property.image_url} alt="" />)}
                 <div className="row-main">
                   <strong>{property.name}</strong>
-                  <small>{property.location}{property.price ? ` · ${property.price}` : ""}{property.source ? ` · via ${sourceLabel(property.source)}` : ""}</small>
+                  <small>{CATEGORY_LABELS[property.category] || property.category} · {property.location}{property.price ? ` · ${property.price}` : ""}{property.source ? ` · via ${sourceLabel(property.source)}` : ""}</small>
                 </div>
                 <Pill tone={property.status === "published" ? "live" : "draft"}>{property.status}</Pill>
                 <button type="button" className="btn btn-light btn-sm" onClick={() => startEdit(property)}>Edit</button>

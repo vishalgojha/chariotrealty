@@ -86,7 +86,7 @@ export type WhatsappStatus = {
 export const CATEGORY_LABELS: Record<string, string> = {
   residential: "Residential",
   commercial: "Commercial",
-  "under-construction": "New launch",
+  "under-construction": "Under construction",
 };
 
 // Where a listing came from, in the words we would say out loud. The stored
