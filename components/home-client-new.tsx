@@ -269,19 +269,19 @@ export function HomeClient({ initialListings }: HomeClientProps) {
               </div>
             </div>
             <div className="neigh-grid">
-              <a href="/bandra-west" className="neigh-card">
+              <a href="/neighborhoods/bandra-west" className="neigh-card">
                 <h3>Bandra</h3>
                 <p className="loc">Luxury apartments, rentals &amp; direct mandates</p>
               </a>
-              <a href="/bkc" className="neigh-card">
+              <a href="/neighborhoods/bkc" className="neigh-card">
                 <h3>BKC</h3>
                 <p className="loc">Corporate offices, premium residences &amp; leasing</p>
               </a>
-              <a href="/khar-west" className="neigh-card">
+              <a href="/neighborhoods/khar-west" className="neigh-card">
                 <h3>Khar West</h3>
                 <p className="loc">Upscale homes with strong connectivity</p>
               </a>
-              <a href="/santacruz-west" className="neigh-card">
+              <a href="/neighborhoods/santacruz-west" className="neigh-card">
                 <h3>Santacruz West</h3>
                 <p className="loc">Residential &amp; mixed-use opportunities</p>
               </a>
