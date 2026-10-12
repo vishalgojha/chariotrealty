@@ -302,7 +302,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
               <a className="pill pill-outline pill-sm" href={INSTAGRAM} target="_blank" rel="noreferrer">
                 <InstagramIcon size={14} /> Follow @chariotrealty.in
               </a>
-              <p className="loc" style={{ marginTop: 10 }}>[Placeholder — Instagram feed to be embedded if available]</p>
+              <p className="loc" style={{ marginTop: 10 }}></p>
             </div>
           </div>
         </section>
