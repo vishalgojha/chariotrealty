@@ -1,6 +1,7 @@
-import { ArrowRightIcon, CheckIcon, ShareIcon } from "@/components/icons";
+import { useState } from "react";
+import { ArrowRightIcon, CheckIcon, ShareIcon, TwitterIcon, LinkedInIcon, FacebookIcon, WhatsAppIcon } from "@/components/icons";
 import type { Category as ListingType, Listing } from "@/lib/listing";
-import { shareToWhatsApp, copyShareLink } from "@/lib/share";
+import { shareToWhatsApp, shareToTwitter, shareToLinkedIn, shareToFacebook, copyShareLink } from "@/lib/share";
 
 export type ListingCardProps = {
   slug: string;
@@ -41,6 +42,8 @@ export function ListingCard(props: ListingCardProps & { onClick?: (slug: string)
     onSelect,
     onClick,
   } = props;
+
+  const [showShare, setShowShare] = useState(false);
 
   const name = title;
   const price = priceLabel || "";
@@ -89,18 +92,72 @@ export function ListingCard(props: ListingCardProps & { onClick?: (slug: string)
           {areaLabel ? <span className="listing-meta">{areaLabel}</span> : null}
           {verified ? <span className="listing-verified">Verified</span> : null}
           {fullListing && (
-            <button
-              className="listing-share"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const url = shareToWhatsApp([fullListing]);
-                window.open(url, "_blank", "noopener,noreferrer");
-              }}
-              aria-label="Share this listing"
-            >
-              <ShareIcon size={14} />
-            </button>
+            <div className="listing-share-wrap">
+              <button
+                className="listing-share"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowShare(!showShare);
+                }}
+                aria-label="Share this listing"
+                aria-expanded={showShare}
+              >
+                <ShareIcon size={14} />
+              </button>
+              {showShare && (
+                <div className="share-dropdown">
+                  <button
+                    className="share-option"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const url = shareToWhatsApp([fullListing]);
+                      window.open(url, "_blank", "noopener,noreferrer");
+                      setShowShare(false);
+                    }}
+                  >
+                    <WhatsAppIcon size={16} /> WhatsApp
+                  </button>
+                  <button
+                    className="share-option"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const url = shareToTwitter([fullListing]);
+                      window.open(url, "_blank", "noopener,noreferrer");
+                      setShowShare(false);
+                    }}
+                  >
+                    <TwitterIcon size={16} /> Twitter
+                  </button>
+                  <button
+                    className="share-option"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const url = shareToLinkedIn([fullListing]);
+                      window.open(url, "_blank", "noopener,noreferrer");
+                      setShowShare(false);
+                    }}
+                  >
+                    <LinkedInIcon size={16} /> LinkedIn
+                  </button>
+                  <button
+                    className="share-option"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const url = shareToFacebook([fullListing]);
+                      window.open(url, "_blank", "noopener,noreferrer");
+                      setShowShare(false);
+                    }}
+                  >
+                    <FacebookIcon size={16} /> Facebook
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <span className="listing-go">
             <ArrowRightIcon size={12} />

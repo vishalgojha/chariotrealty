@@ -59,3 +59,19 @@ export async function shareNative(listings: Listing[]): Promise<boolean> {
 export function copyShareLink(listings: Listing[]): string {
   return buildShareMessage(listings);
 }
+
+export function shareToTwitter(listings: Listing[]): string {
+  const msg = buildShareMessage(listings);
+  return `https://twitter.com/intent/tweet?text=${encodeURIComponent(msg.slice(0, 280))}`;
+}
+
+export function shareToLinkedIn(listings: Listing[]): string {
+  const msg = buildShareMessage(listings);
+  const url = `https://chariotrealty.in/properties/${listings[0].slug}`;
+  return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}&title=${encodeURIComponent("Property from Chariot Realty")}&summary=${encodeURIComponent(msg.slice(0, 500))}`;
+}
+
+export function shareToFacebook(listings: Listing[]): string {
+  const url = `https://chariotrealty.in/properties/${listings[0].slug}`;
+  return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+}
