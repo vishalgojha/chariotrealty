@@ -1,5 +1,6 @@
-import { ArrowRightIcon } from "@/components/icons";
-import type { Category as ListingType } from "@/lib/listing";
+import { ArrowRightIcon, CheckIcon, ShareIcon } from "@/components/icons";
+import type { Category as ListingType, Listing } from "@/lib/listing";
+import { shareToWhatsApp, copyShareLink } from "@/lib/share";
 
 export type ListingCardProps = {
   slug: string;
@@ -15,6 +16,11 @@ export type ListingCardProps = {
   availability?: string | null;
   verified?: boolean;
   featured?: boolean;
+  // For sharing
+  fullListing?: Listing;
+  // For multi-select
+  selected?: boolean;
+  onSelect?: (slug: string) => void;
 };
 
 export function ListingCard(props: ListingCardProps & { onClick?: (slug: string) => void }) {
@@ -30,6 +36,9 @@ export function ListingCard(props: ListingCardProps & { onClick?: (slug: string)
     availability,
     verified,
     featured,
+    fullListing,
+    selected,
+    onSelect,
     onClick,
   } = props;
 
@@ -62,6 +71,12 @@ export function ListingCard(props: ListingCardProps & { onClick?: (slug: string)
       >
         {featured ? <span className="badge">Featured</span> : null}
         {availability ? <span className="availability">{availability}</span> : null}
+        {onSelect && (
+          <label className="listing-select" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(slug); }}>
+            <input type="checkbox" checked={selected} onChange={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(slug); }} />
+            <span className="checkmark"><CheckIcon size={18} /></span>
+          </label>
+        )}
       </div>
 
       <div className="listing-body">
@@ -73,6 +88,20 @@ export function ListingCard(props: ListingCardProps & { onClick?: (slug: string)
           {bedsLabel ? <span className="listing-meta">{bedsLabel}</span> : null}
           {areaLabel ? <span className="listing-meta">{areaLabel}</span> : null}
           {verified ? <span className="listing-verified">Verified</span> : null}
+          {fullListing && (
+            <button
+              className="listing-share"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const url = shareToWhatsApp([fullListing]);
+                window.open(url, "_blank", "noopener,noreferrer");
+              }}
+              aria-label="Share this listing"
+            >
+              <ShareIcon size={14} />
+            </button>
+          )}
           <span className="listing-go">
             <ArrowRightIcon size={12} />
           </span>

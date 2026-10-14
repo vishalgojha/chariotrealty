@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AboutUs } from "@/components/about-us";
-import { ChevronDownIcon, InstagramIcon, SearchIcon, WhatsAppIcon } from "@/components/icons";
+import { CheckIcon, ChevronDownIcon, InstagramIcon, SearchIcon, ShareIcon, WhatsAppIcon } from "@/components/icons";
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { ListingCard, type ListingCardProps } from "@/components/listing-card";
 import type { Listing, ListingFilter, Category } from "@/lib/listing";
 import { organizationJsonLd } from "@/lib/seo";
+import { shareToWhatsApp, shareNative } from "@/lib/share";
 
 const SCROLL_KEY = "chariot:listing-scroll";
 const INSTAGRAM = "https://instagram.com/chariotrealty.in";
@@ -30,6 +31,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const [loaded, setLoaded] = useState(initialListings.length > 0);
   const [unavailable, setUnavailable] = useState(initialListings.length === 0);
   const [retryCount, setRetryCount] = useState(0);
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem(SCROLL_KEY);
@@ -105,6 +107,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
         availability: undefined,
         verified: l.badgeTone === "verified",
         featured: false,
+        fullListing: l,
       })),
     [filtered],
   );
@@ -125,9 +128,30 @@ export function HomeClient({ initialListings }: HomeClientProps) {
         availability: l.badge,
         verified: l.badgeTone === "verified",
         featured: false,
+        fullListing: l,
       })),
     [filtered],
   );
+
+  const toggleSelect = (slug: string) => {
+    setSelectedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  };
+
+  const shareSelected = async () => {
+    const selected = filtered.filter((l) => selectedSlugs.has(l.slug));
+    if (selected.length === 0) return;
+    const shared = await shareNative(selected);
+    if (!shared) {
+      const url = shareToWhatsApp(selected);
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+    setSelectedSlugs(new Set());
+  };
 
   function openModal(kind: LeadKind) {
     setModal(kind);
@@ -214,6 +238,19 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                 <p className="sub">Featured listings across Bandra, BKC and nearby western suburbs.</p>
               </div>
             </div>
+            {selectedSlugs.size > 0 && (
+              <div className="selection-bar">
+                <span>{selectedSlugs.size} selected</span>
+                <div className="selection-actions">
+                  <button type="button" className="pill pill-outline pill-sm" onClick={() => setSelectedSlugs(new Set())}>
+                    Clear
+                  </button>
+                  <button type="button" className="pill pill-gold pill-sm" onClick={shareSelected}>
+                    <ShareIcon size={14} /> Share Selected
+                  </button>
+                </div>
+              </div>
+            )}
             {!loaded ? (
               <div className="listing-grid listing-grid-lg">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -243,6 +280,8 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                   <ListingCard
                     key={c.slug}
                     {...c}
+                    selected={selectedSlugs.has(c.slug)}
+                    onSelect={toggleSelect}
                     onClick={(slug) => {
                       window.sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
                       window.location.href = `/properties/${slug}`;
@@ -269,6 +308,8 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                   <ListingCard
                     key={card.slug}
                     {...card}
+                    selected={selectedSlugs.has(card.slug)}
+                    onSelect={toggleSelect}
                     onClick={(slug) => {
                       window.sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
                       window.location.href = `/properties/${slug}`;
