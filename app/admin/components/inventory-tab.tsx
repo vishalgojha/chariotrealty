@@ -262,6 +262,23 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
 
   const unpublishedDrafts = typedDrafts.filter((item) => item.published_status !== "published");
   const editingProperty = editing ? properties.find((item) => item.id === form.id) : undefined;
+  const renderProperty = (property: CmsProperty) => (
+    <div className="row-item" key={property.id}>
+      {property.image_url && (property.media_type === "video" ? <video src={property.image_url} muted playsInline /> : <img src={property.image_url} alt="" />)}
+      <div className="row-main">
+        <strong>{property.name}</strong>
+        <small>{CATEGORY_LABELS[property.category] || property.category} · {property.location}{property.price ? ` · ${property.price}` : ""}{property.source ? ` · via ${sourceLabel(property.source)}` : ""}</small>
+      </div>
+      <Pill tone={property.status === "published" ? "live" : "draft"}>{property.status}</Pill>
+      <button type="button" className="btn btn-light btn-sm" onClick={() => startEdit(property)}>Edit</button>
+      <button type="button" className="btn btn-light btn-sm" onClick={() => removeProperty(property.id, property.name)}>Delete</button>
+      {property.status !== "published" ? (
+        <button type="button" className="btn btn-light btn-sm" onClick={() => setStatus(property.id, "published")}>Publish</button>
+      ) : (
+        <button type="button" className="btn btn-light btn-sm" onClick={() => setStatus(property.id, "draft")}>Unpublish</button>
+      )}
+    </div>
+  );
 
   return (
     <div className="tab-stack">
@@ -508,24 +525,21 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
         {loaded && !properties.length ? (
           <p className="empty-state">No inventory yet. Create a draft above — or just ask the Assistant to save one — then approve and publish it: that is what shows on the website.</p>
         ) : (
-          <div className="row-list">
-            {properties.map((property) => (
-              <div className="row-item" key={property.id}>
-                {property.image_url && (property.media_type === "video" ? <video src={property.image_url} muted playsInline /> : <img src={property.image_url} alt="" />)}
-                <div className="row-main">
-                  <strong>{property.name}</strong>
-                  <small>{CATEGORY_LABELS[property.category] || property.category} · {property.location}{property.price ? ` · ${property.price}` : ""}{property.source ? ` · via ${sourceLabel(property.source)}` : ""}</small>
-                </div>
-                <Pill tone={property.status === "published" ? "live" : "draft"}>{property.status}</Pill>
-                <button type="button" className="btn btn-light btn-sm" onClick={() => startEdit(property)}>Edit</button>
-                <button type="button" className="btn btn-light btn-sm" onClick={() => removeProperty(property.id, property.name)}>Delete</button>
-                {property.status !== "published" ? (
-                  <button type="button" className="btn btn-light btn-sm" onClick={() => setStatus(property.id, "published")}>Publish</button>
-                ) : (
-                  <button type="button" className="btn btn-light btn-sm" onClick={() => setStatus(property.id, "draft")}>Unpublish</button>
-                )}
-              </div>
-            ))}
+          <div className="inventory-groups">
+            {properties.some((property) => property.category !== "under-construction") ? (
+              <section className="inventory-group">
+                <h3>Residential &amp; commercial</h3>
+                <div className="row-list">{properties.filter((property) => property.category !== "under-construction").map(renderProperty)}</div>
+              </section>
+            ) : null}
+            <section className="inventory-group">
+              <h3>Under construction</h3>
+              {properties.some((property) => property.category === "under-construction") ? (
+                <div className="row-list">{properties.filter((property) => property.category === "under-construction").map(renderProperty)}</div>
+              ) : (
+                <p className="empty-state">No under-construction projects yet. Select “Under construction” in the category field above to add one.</p>
+              )}
+            </section>
           </div>
         )}
       </Panel>

@@ -103,6 +103,7 @@ export type Listing = {
   media: ListingMedia[];
   facts: ListingFact[];
   amenities: string[];
+  projectDetails: string[];
   description?: string;
   priceValue: number;
   priceUnit: PriceUnit;
@@ -168,7 +169,7 @@ export function publicTextList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0 && !containsSourceContact(item));
 }
 
-const PUBLIC_LIST_KEYS = ["amenities", "unit_amenities", "building_amenities"] as const;
+const PUBLIC_LIST_KEYS = ["amenities", "unit_amenities", "building_amenities", "project_details"] as const;
 const PUBLIC_URL_KEYS = ["reel_url", "instagram_reel_url", "drive_url", "drive_photos_url"] as const;
 const PUBLIC_TEXT_KEYS = [PUBLIC_DESCRIPTION_KEY] as const;
 
@@ -311,6 +312,7 @@ export function toListing(row: ChariotProperty): Listing {
     media: listingMedia(row),
     facts,
     amenities,
+    projectDetails: customList(row, ["project_details"]),
     description: listingDescription(row),
     priceValue: Number(row.priceValue || 0),
     priceUnit: (row.priceUnit || "total_price") as PriceUnit,

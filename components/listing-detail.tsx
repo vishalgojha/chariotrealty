@@ -100,6 +100,15 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
 
           {listing.amenities.length ? <div className="detail-amenities">{listing.amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div> : null}
 
+          {listing.projectDetails.length ? (
+            <section className="detail-section">
+              <h2>Project details</h2>
+              <ul className="project-detail-list">
+                {listing.projectDetails.map((detail) => <li key={detail}>{detail}</li>)}
+              </ul>
+            </section>
+          ) : null}
+
           {listing.description ? (
             <section className="detail-section">
               <h2>Description</h2>
