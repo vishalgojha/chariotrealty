@@ -1,5 +1,26 @@
 export type PropertyCategory = "residential" | "commercial" | "under-construction";
 
+export type PropertyAmenity = 
+  | "Balcony"
+  | "Servant room with washroom"
+  | "Balcony"
+  | "Lift"
+  | "Power backup"
+  | "Security"
+  | "Parking"
+  | "Fitness centre"
+  | "Swimming pool"
+  | "Kids' pool"
+  | "Squash court"
+  | "Golf simulator"
+  | "Game simulator"
+  | "Bowling alley"
+  | "Pool table"
+  | "Club house"
+  | "Green area"
+  | "Solar power"
+  | "Rainwater harvesting";
+
 export type MumbaiProperty = {
   id: string;
   slug: string;
@@ -15,12 +36,25 @@ export type MumbaiProperty = {
   priceUnit: "monthly_rent" | "per_sqft" | "total_price";
   currency: "INR";
   carpetAreaSqft: number;
+  beds?: number;
+  bathrooms?: number;
   configuration?: string;
   parking?: number;
+  parkingCover?: boolean;
   possession?: string;
   reraApproved?: boolean;
   image?: string;
+  images?: string[];
   status: "available";
+  deposit?: number;
+  maintenance?: string;
+  furnishing?: "unfurnished" | "semifurnished" | "furnished" | "stickfurnished";
+  floor?: number;
+  totalFloors?: number;
+  facing?: string;
+  age?: number;
+  agent?: { name?: string; phone?: string; photo?: string };
+  amenities?: string[];
 };
 
 export const mumbaiProperties: MumbaiProperty[] = [

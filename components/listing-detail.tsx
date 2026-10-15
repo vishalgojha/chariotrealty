@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeftIcon, CheckIcon, InstagramIcon, WhatsAppIcon } from "@/components/icons";
+import { ArrowLeftIcon, CheckIcon, InstagramIcon } from "@/components/icons";
 import { ContactBar } from "@/components/contact-bar";
 import { SiteHeader } from "@/components/site-header";
 import { waLink, type Listing } from "@/lib/listing";
+import { Breadcrumb } from "@/components/breadcrumb";
+import { Gallery } from "@/components/gallery";
+import { KeyFacts } from "@/components/key-facts";
+import { AmenitiesGrid } from "@/components/amenities-grid";
+import { EnquiryCard } from "@/components/enquiry-card";
 
 function SimilarCard({ listing }: { listing: Listing }) {
   const cover = listing.media[0];
@@ -27,19 +31,8 @@ function SimilarCard({ listing }: { listing: Listing }) {
 
 export function ListingDetail({ listing, similar }: { listing: Listing; similar: Listing[] }) {
   const router = useRouter();
-  const [index, setIndex] = useState(0);
-  const touchStart = useRef<number | null>(null);
-  const slides = listing.media;
-  const last = Math.max(slides.length - 1, 0);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "ArrowRight") setIndex((current) => Math.min(current + 1, last));
-      if (event.key === "ArrowLeft") setIndex((current) => Math.max(current - 1, 0));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [last]);
+  const media = listing.media.map((m) => ({ url: m.url, type: m.type }));
 
   return (
     <>
@@ -47,100 +40,86 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
         <SiteHeader />
       </div>
 
-      <div className="detail-brief-top">
-        <button type="button" className="detail-back" aria-label="Back to listings" onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}>
-          <ArrowLeftIcon size={16} />
-        </button>
-        <a className="detail-brand" href="/" aria-label="Chariot Realty home">
-          <img src="/apple-touch-icon.png" alt="" />
-        </a>
-        <a className="pill pill-dark pill-sm detail-brief-wa" href={waLink(listing.waMessage)} target="_blank" rel="noreferrer">
-          <WhatsAppIcon size={14} /> WhatsApp
-        </a>
-      </div>
-
-      {/* One column on a phone, gallery beside the facts on a desktop. */}
-      <div className="detail-layout">
-        <div className="detail-main">
-          <div
-            className="detail-gallery"
-            onTouchStart={(event) => { touchStart.current = event.touches[0].clientX; }}
-            onTouchEnd={(event) => {
-              if (touchStart.current === null) return;
-              const delta = event.changedTouches[0].clientX - touchStart.current;
-              touchStart.current = null;
-              if (delta < -40) setIndex((current) => Math.min(current + 1, last));
-              if (delta > 40) setIndex((current) => Math.max(current - 1, 0));
-            }}
-          >
-            <div className="detail-gallery-track" style={{ transform: `translateX(-${index * 100}%)` }}>
-              {slides.length ? slides.map((slide) => slide.type === "video" ? (
-                <video key={slide.url} className="detail-gallery-slide" src={slide.url} muted loop playsInline controls />
-              ) : (
-                <div key={slide.url} className="detail-gallery-slide" style={{ backgroundImage: `url('${slide.url}')` }} />
-              )) : (
-                <div className="detail-gallery-slide detail-gallery-empty">Photos shared on WhatsApp</div>
-              )}
-            </div>
-            <span className="detail-verified"><CheckIcon size={11} /> Verified</span>
-            {listing.area ? <span className="detail-location">{listing.area}</span> : null}
-          </div>
-          <div className="detail-dots">
-            {(slides.length ? slides : [{ url: "empty", type: "image" as const }]).map((slide, dot) => <button type="button" aria-label={`Photo ${dot + 1}`} key={slide.url} className={dot === index ? "active" : ""} onClick={() => setIndex(dot)} />)}
-          </div>
+      <div className="shell detail-shell">
+        <div className="detail-brief-top">
+          <button type="button" className="detail-back" aria-label="Back to listings" onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}>
+            <ArrowLeftIcon size={16} />
+          </button>
+          <a className="detail-brand" href="/" aria-label="Chariot Realty home">
+            <img src="/apple-touch-icon.png" alt="" />
+          </a>
         </div>
 
-        <div className="detail-aside">
-          <section className="detail-title-block">
-            <h1>{listing.name}</h1>
-            <p className="detail-brief-price">{listing.price}{listing.priceNote ? <span>{listing.priceNote}</span> : null}</p>
-            {listing.specsLine ? <p className="detail-specs-line">{listing.specsLine}</p> : null}
-            {listing.tagline ? <p className="detail-tagline">{listing.tagline}</p> : null}
-          </section>
+        <Breadcrumb items={[
+          { label: "Home", href: "/" },
+          { label: "Properties", href: "/properties" },
+          { label: listing.area || listing.location, href: `/properties?area=${encodeURIComponent(listing.area || listing.location)}` },
+          { label: listing.name }
+        ]} />
 
-          {listing.description ? (
-            <section className="detail-section">
-              <h2>Description</h2>
-              <p>{listing.description}</p>
-            </section>
-          ) : null}
+        <div className="detail-redesign-layout">
+          <main className="detail-redesign-main">
+            <Gallery media={media.length ? media : [{ url: "", type: "image" }]} name={listing.name} />
 
-          {listing.amenities.length ? <div className="detail-amenities">{listing.amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div> : null}
-
-          {listing.projectDetails.length ? (
-            <section className="detail-section">
-              <h2>Project details</h2>
-              <ul className="project-detail-list">
-                {listing.projectDetails.map((detail) => <li key={detail}>{detail}</li>)}
-              </ul>
-            </section>
-          ) : null}
-
-          {listing.mediaLinks.length ? (
-            <div className="detail-media-link">
-              {listing.mediaLinks.map((link) => <a key={link.href} className="pill pill-gold pill-sm" href={link.href} target="_blank" rel="noreferrer">
-                {link.label === "Instagram Reel" ? <InstagramIcon size={14} /> : null}{link.label}
-              </a>)}
+            <div className="detail-header-block">
+              <h1>{listing.name}</h1>
+              <div className="detail-price-row">
+                <span className="detail-price">{listing.price}{listing.priceNote ? ` ${listing.priceNote}` : ""}</span>
+                {listing.specsLine && <span className="detail-specs">{listing.specsLine}</span>}
+              </div>
+              <p className="detail-location-text">{listing.location}</p>
             </div>
-          ) : null}
 
-          <section className="detail-section detail-map">
-            <h2>Location</h2>
-            <iframe
-              title={`Map of ${listing.name}`}
-              src={`https://maps.google.com/maps?q=${encodeURIComponent(`${listing.name} ${listing.location}`)}&z=15&output=embed`}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              allowFullScreen
-            />
-          </section>
+            <KeyFacts listing={listing} />
+            <AmenitiesGrid listing={listing} />
+
+            {listing.description ? (
+              <section className="detail-section">
+                <h2>Description</h2>
+                <p>{listing.description}</p>
+              </section>
+            ) : null}
+
+            {listing.projectDetails.length ? (
+              <section className="detail-section">
+                <h2>Project details</h2>
+                <ul className="project-detail-list">
+                  {listing.projectDetails.map((detail) => <li key={detail}>{detail}</li>)}
+                </ul>
+              </section>
+            ) : null}
+
+            <section className="detail-section detail-map">
+              <h2>Location</h2>
+              <iframe
+                title={`Map of ${listing.name}`}
+                src={`https://maps.google.com/maps?q=${encodeURIComponent(`${listing.name} ${listing.location}`)}&z=15&output=embed`}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
+                style={{ width: "100%", height: 320, border: 0, borderRadius: 12 }}
+              />
+            </section>
+
+            {listing.mediaLinks.length ? (
+              <div className="detail-media-link">
+                {listing.mediaLinks.map((link) => <a key={link.href} className="pill pill-gold pill-sm" href={link.href} target="_blank" rel="noreferrer">
+                  {link.label === "Instagram Reel" ? <InstagramIcon size={14} /> : null}{link.label}
+                </a>)}
+              </div>
+            ) : null}
+          </main>
+
+          <aside>
+            <EnquiryCard listing={listing} />
+          </aside>
         </div>
-      </div>
 
-      {similar.length ? <section className="similar-section">
-        <h2>Similar Options</h2>
-        <div className="similar-grid">{similar.map((candidate) => <SimilarCard key={candidate.slug} listing={candidate} />)}</div>
-      </section> : null}
+        {similar.length ? <section className="similar-section">
+          <h2>Similar Options</h2>
+          <div className="similar-grid">{similar.map((candidate) => <SimilarCard key={candidate.slug} listing={candidate} />)}</div>
+        </section> : null}
+      </div>
 
       <ContactBar message={listing.waMessage} />
     </>
