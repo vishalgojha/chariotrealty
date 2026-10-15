@@ -23,7 +23,6 @@ const EMPTY_FORM = {
   name: "",
   category: "residential",
   locality: "Bandra West",
-  micro_market: "Bandra West",
   location: "",
   price: "",
   configuration: "",
@@ -135,7 +134,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
    function listingFacts() {
      const values = customValues;
      const parking = Number(values.parking);
-     const parts = [form.location, form.locality, form.micro_market].map((p) => p?.trim()).filter(Boolean);
+     const parts = [form.location, form.locality].map((p) => p?.trim()).filter(Boolean);
      const seen = new Set<string>();
      const area = parts.filter((p) => {
        const low = p.toLowerCase();
@@ -196,7 +195,6 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       name: property.name,
       category: property.category,
       locality: property.locality,
-      micro_market: property.micro_market,
       location: property.location,
       price: property.price,
       configuration: property.configuration || "",
@@ -444,12 +442,6 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
           <label className="field">
             <span>Locality</span>
             <select className="select" value={form.locality} onChange={(e) => patch({ locality: e.target.value })}>
-              {MARKETS.map((market) => <option key={market} value={market}>{market}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>Micro-market</span>
-            <select className="select" value={form.micro_market} onChange={(e) => patch({ micro_market: e.target.value })}>
               {MARKETS.map((market) => <option key={market} value={market}>{market}</option>)}
             </select>
           </label>
