@@ -7,6 +7,7 @@ import { AskTab } from "./ask-tab";
 import { InventoryTab } from "./inventory-tab";
 import { LeadsTab } from "./leads-tab";
 import { MarketsTab } from "./markets-tab";
+import { MessagesTab } from "./messages-tab";
 import { OverviewTab } from "./overview-tab";
 import { WhatsappTab, type Notify } from "./whatsapp-tab";
 import { Icon, Toast, type ToastTone } from "./ui";
@@ -15,6 +16,7 @@ import { InstallApp } from "@/components/install-app";
 const NAV: { id: TabId; label: string; hint: string; icon: string }[] = [
   { id: "overview", label: "Overview", hint: "Live market view", icon: "grid" },
   { id: "whatsapp", label: "WhatsApp studio", hint: "Self-chat publishing", icon: "whatsapp" },
+  { id: "messages", label: "Messages", hint: "Raw WhatsApp capture", icon: "inbox" },
   { id: "inventory", label: "My inventory", hint: "Kapil’s list & CMS", icon: "box" },
   { id: "leads", label: "Enquiries", hint: "Website leads", icon: "mail" },
   { id: "agent", label: "Ask anything", hint: "Listings, requirements, leads & notes", icon: "spark" },
@@ -107,6 +109,7 @@ export function AdminShell({ auth }: { auth: AdminAuth }) {
           <div className={`admin-content${tab === "agent" ? " admin-content-chat" : ""}`}>
             {tab === "overview" && <OverviewTab go={go} api={auth.api} />}
             {tab === "whatsapp" && <WhatsappTab api={auth.api} notify={notify} />}
+            {tab === "messages" && <MessagesTab api={auth.api} notify={notify} />}
             {tab === "inventory" && <InventoryTab api={auth.api} notify={notify} />}
             {tab === "leads" && <LeadsTab api={auth.api} />}
             {tab === "agent" && <AskTab api={auth.api} />}

@@ -17,6 +17,7 @@ HOW TO ANSWER
 - When Kapil dictates a property or a lead, repeat back the key details (area, price, who, when) in one or two lines and confirm you saved it — he wants reassurance.
 - Never invent data. If the tools return nothing, say "I don't have that yet" and offer the closest real match or ask him for the details to save.
 - WhatsApp group and self-chat messages are stored raw. When Kapil asks for them, search them and say where each one came from (group and sender). A WhatsApp message is an unverified lead, never a Chariot inventory listing.
+- Listing searches also return a whatsapp_evidence list: the raw WhatsApp messages from the last 30 days that match the same area/configuration. Treat these as real evidence and quote them — give the short snippet and its source (group or sender, and the date). Keep them clearly labelled as unverified WhatsApp leads, never as Chariot inventory, and never mention the whatsapp_evidence field name. When the typed inventory is thin or empty, lead with these WhatsApp messages instead of saying nothing was found.
 - Extraction is on demand only. Turn a WhatsApp message into a listing draft only when Kapil explicitly asks to save or extract that specific message. Never extract everything a search returns.
 
 ACTION CONFIRMATION
@@ -38,6 +39,7 @@ SEARCH AND ANSWER RULES
 - If a request does not distinguish sale from rent, use sale only when the wording clearly implies buying; otherwise ask whether the user means sale or rent.
 - If a request does not distinguish residential from commercial, infer it only when the wording is explicit (BHK/flat/home = residential; office/shop/workspace = commercial); otherwise ask.
 - Treat locality, micro-market, and property/building names as search terms, not guaranteed exact matches. Say what filters were used when useful.
+- When a listing or match search returns whatsapp_evidence, present those raw WhatsApp messages as supporting evidence with their source (group or sender, and the message date). They are unverified WhatsApp leads, kept separate from Chariot inventory, and are strongest when the typed results are few.
 - For inventory summaries, search the current internal listings with no locality filter and report only returned rows. Never fill gaps from memory, sample data, or the public site.
 - For buyer-property matching, use the matching tool or search both the relevant requirement and listing tables. Return a fit score and the actual reasons for the match; a match is a shortlist, not a promise of availability or suitability.
 - For lead questions, search chariot_leads. A lead's phone number is a lead contact, not a broker/property contact. Do not label it as the broker's number.
@@ -161,7 +163,7 @@ const TOOLS = [
     function: {
       name: "search_listings",
       description:
-        "Search Chariot's typed property listings (residential/commercial; sale/rent). Use for queries like \"3 BHK in Bandra under ₹4 crore\" or \"office for rent in BKC\".",
+        "Search Chariot's typed property listings (residential/commercial; sale/rent). Use for queries like \"3 BHK in Bandra under ₹4 crore\" or \"office for rent in BKC\". The result also includes whatsapp_evidence: recent raw WhatsApp messages matching the same area/configuration, to be quoted as unverified leads with their source.",
       parameters: {
         type: "object",
         properties: {
@@ -426,6 +428,45 @@ async function searchPublished(args: SearchArgs): Promise<Array<Record<string, u
   return rows.slice(0, args.limit ?? 5).map((row) => pickPublished(row));
 }
 
+// A property search also surfaces the raw WhatsApp messages that match it,
+// because the broker's live groups are where most stock first appears. These are
+// unverified leads from the last 30 days, never Chariot inventory, and are
+// returned with their source so the answer can quote real evidence.
+async function whatsappEvidenceFor(args: SearchArgs): Promise<Array<Record<string, unknown>>> {
+  const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
+  if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return [];
+
+  const terms: string[] = [];
+  if (args.locality?.trim()) terms.push(args.locality.trim());
+  if (typeof args.bhk === "number") terms.push(`${args.bhk} BHK`);
+  if (!terms.length) return [];
+
+  const limit = Math.min(args.limit ?? 5, 8);
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const or = terms.map((term) => `message.ilike.*${encodeURIComponent(term)}*`).join(",");
+  const parts = [
+    "select=id,message,sender,sender_phone,group_name,is_group,message_timestamp",
+    `broker_id=eq.${encodeURIComponent(whatsappBrokerId)}`,
+    `created_at=gte.${encodeURIComponent(cutoff)}`,
+    "message=neq.",
+    `or=(${or})`,
+    "order=message_timestamp.desc",
+    `limit=${limit}`,
+  ];
+  try {
+    const rows = await restSelect(`chariot_whatsapp_messages?${parts.join("&")}`);
+    return rows.map((row) => ({
+      id: row.id,
+      snippet: String(row.message || "").replace(/\s+/g, " ").slice(0, 240),
+      sender: (row.sender as string) || "",
+      source: row.is_group ? `WhatsApp group ${row.group_name || "unknown"}` : "WhatsApp direct chat",
+      at: (row.message_timestamp as string) || "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function searchListings(args: SearchArgs): Promise<string> {
   const category = args.category || "residential";
   const transaction = args.transaction || "sale";
@@ -451,7 +492,10 @@ async function searchListings(args: SearchArgs): Promise<string> {
   } catch {
     published = [];
   }
-  return JSON.stringify({ results: [...published, ...internal].slice(0, args.limit ?? 5) });
+  const payload: Record<string, unknown> = { results: [...published, ...internal].slice(0, args.limit ?? 5) };
+  const evidence = await whatsappEvidenceFor(args);
+  if (evidence.length) payload.whatsapp_evidence = evidence;
+  return JSON.stringify(payload);
 }
 
 async function matchProperties(args: MatchArgs): Promise<string> {
@@ -493,7 +537,10 @@ async function matchProperties(args: MatchArgs): Promise<string> {
     publishedScored = [];
   }
   const scored = [...publishedScored, ...internalScored].sort((a, b) => Number(b.match_score) - Number(a.match_score) || String(a.name).localeCompare(String(b.name)));
-  return JSON.stringify({ results: scored.slice(0, Math.min(args.limit ?? 5, 10)) });
+  const payload: Record<string, unknown> = { results: scored.slice(0, Math.min(args.limit ?? 5, 10)) };
+  const evidence = await whatsappEvidenceFor(args);
+  if (evidence.length) payload.whatsapp_evidence = evidence;
+  return JSON.stringify(payload);
 }
 
 async function searchWhatsappMessages(args: { query?: string; limit?: number }): Promise<string> {
