@@ -556,7 +556,8 @@ img{max-width:100%;display:block}
 .detail-amenities::-webkit-scrollbar{display:none}
 .detail-amenities span{flex:0 0 auto;border:1px solid #e4d8bd;background:#fff9e9;color:var(--navy);border-radius:999px;padding:8px 12px;font-size:11px;font-weight:600}
 .detail-section{padding:20px 0 0}
-.detail-section h2,.similar-section h2{font-family:var(--sans);font-size:18px;line-height:1.2;font-weight:800;color:var(--navy);margin:0 0 8px}
+.detail-section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.detail-section h2,.similar-section h2{font-family:var(--sans);font-size:18px;line-height:1.2;font-weight:800;color:var(--navy);margin:0}
 .detail-section p{font-size:13px;line-height:1.55;color:#424242;margin:0}
 .project-detail-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
 .project-detail-list li{padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--cream);font-size:13px;color:#424242}

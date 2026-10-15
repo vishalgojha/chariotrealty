@@ -75,7 +75,16 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
 
             {listing.description ? (
               <section className="detail-section">
-                <h2>Description</h2>
+                <div className="detail-section-head">
+                  <h2>Description</h2>
+                  <button
+                    type="button"
+                    className="pill pill-ghost pill-sm"
+                    onClick={() => { navigator.clipboard.writeText(listing.description || ""); }}
+                  >
+                    Copy
+                  </button>
+                </div>
                 <p>{listing.description}</p>
               </section>
             ) : null}
