@@ -271,11 +271,12 @@ export function toListing(row: ChariotProperty): Listing {
         : "Verified";
 
   const facts: ListingFact[] = [];
-  if (row.configuration) facts.push({ label: "Config", value: row.configuration });
-  if (row.carpetAreaSqft) facts.push({ label: "Carpet", value: `${row.carpetAreaSqft.toLocaleString("en-IN")} sqft` });
   if (row.parking) facts.push({ label: "Parking", value: `${row.parking} covered` });
   if (row.possession) facts.push({ label: "Possession", value: row.possession });
   if (row.reraApproved) facts.push({ label: "RERA", value: "Approved" });
+  if (row.customFields?.furnishing) facts.push({ label: "Furnishing", value: String(row.customFields.furnishing) });
+  if (row.customFields?.balcony !== undefined) facts.push({ label: "Balcony", value: String(row.customFields.balcony) });
+  if (row.customFields?.servant_room_washroom) facts.push({ label: "Servant Room Washroom", value: "Yes" });
 
   const backendAmenities = customList(row, ["amenities", "unit_amenities", "building_amenities"]);
   const amenities = backendAmenities.length ? backendAmenities : [];
