@@ -117,6 +117,9 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       } else if (area && MARKETS.includes(area as any)) {
         patch({ locality: area as any });
       }
+      if (place.place_id) {
+        setCustomValues((v) => ({ ...v, google_place_id: place.place_id }));
+      }
     });
     return () => {
       try { (window as any).google.maps.event.clearInstanceListeners(autocomplete); } catch {}
