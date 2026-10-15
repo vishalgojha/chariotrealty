@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AboutUs } from "@/components/about-us";
 import { CheckIcon, ChevronDownIcon, InstagramIcon, SearchIcon, ShareIcon, WhatsAppIcon } from "@/components/icons";
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
-import { ListingCard, type ListingCardProps } from "@/components/listing-card";
+import { PropertyCard } from "@/components/property-card";
 import type { Listing, ListingFilter, Category } from "@/lib/listing";
 import { organizationJsonLd } from "@/lib/seo";
 import { shareToWhatsApp, shareNative } from "@/lib/share";
@@ -91,45 +91,13 @@ export function HomeClient({ initialListings }: HomeClientProps) {
     });
   }, [listings, filter, query]);
 
-  const cards: ListingCardProps[] = useMemo(
-    () =>
-      filtered.filter((listing) => listing.category !== "under-construction").slice(0, 12).map((l) => ({
-        slug: l.slug,
-        title: l.name,
-        location: l.location,
-        microLocation: undefined,
-        priceLabel: l.price,
-        bedsLabel: l.configuration,
-        areaLabel: l.area,
-        propertyType: normalizeType(l.category),
-        listingType: (l.price || "").toLowerCase().includes("/mo") ? "rent" : "buy",
-        imageUrl: l.media?.[0]?.url,
-        availability: undefined,
-        verified: l.badgeTone === "verified",
-        featured: false,
-        fullListing: l,
-      })),
+  const displayListings = useMemo(
+    () => filtered.filter((listing) => listing.category !== "under-construction").slice(0, 12),
     [filtered],
   );
 
-  const underConstructionCards: ListingCardProps[] = useMemo(
-    () =>
-      filtered.filter((listing) => listing.category === "under-construction").slice(0, 12).map((l) => ({
-        slug: l.slug,
-        title: l.name,
-        location: l.location,
-        microLocation: undefined,
-        priceLabel: l.price,
-        bedsLabel: l.configuration,
-        areaLabel: l.area,
-        propertyType: normalizeType(l.category),
-        listingType: "buy" as const,
-        imageUrl: l.media?.[0]?.url,
-        availability: l.badge,
-        verified: l.badgeTone === "verified",
-        featured: false,
-        fullListing: l,
-      })),
+  const underConstructionListings = useMemo(
+    () => filtered.filter((listing) => listing.category === "under-construction").slice(0, 12),
     [filtered],
   );
 
@@ -267,7 +235,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                   <WhatsAppIcon size={16} /> Message Kapil for current inventory
                 </a>
               </div>
-            ) : cards.length === 0 ? (
+            ) : displayListings.length === 0 ? (
               <div className="empty-state">
                 <p>No listings match your filters.</p>
                 <button type="button" className="pill pill-outline" style={{ marginTop: 10 }} onClick={() => { setQuery(""); setFilter("all"); }}>
@@ -275,17 +243,13 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                 </button>
               </div>
             ) : (
-              <div className="listing-grid listing-grid-lg">
-                {cards.map((c) => (
-                  <ListingCard
-                    key={c.slug}
-                    {...c}
-                    selected={selectedSlugs.has(c.slug)}
+              <div className="property-grid">
+                {displayListings.map((l) => (
+                  <PropertyCard
+                    key={l.slug}
+                    listing={l}
+                    selected={selectedSlugs.has(l.slug)}
                     onSelect={toggleSelect}
-                    onClick={(slug) => {
-                      window.sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
-                      window.location.href = `/properties/${slug}`;
-                    }}
                   />
                 ))}
               </div>
@@ -302,18 +266,14 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                 <p className="sub">A considered selection of new residences in Bandra and Juhu, with current availability and possession timelines.</p>
               </div>
             </div>
-            {underConstructionCards.length ? (
-              <div className="listing-grid listing-grid-lg">
-                {underConstructionCards.map((card) => (
-                  <ListingCard
-                    key={card.slug}
-                    {...card}
-                    selected={selectedSlugs.has(card.slug)}
+            {underConstructionListings.length ? (
+              <div className="property-grid">
+                {underConstructionListings.map((l) => (
+                  <PropertyCard
+                    key={l.slug}
+                    listing={l}
+                    selected={selectedSlugs.has(l.slug)}
                     onSelect={toggleSelect}
-                    onClick={(slug) => {
-                      window.sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
-                      window.location.href = `/properties/${slug}`;
-                    }}
                   />
                 ))}
               </div>
