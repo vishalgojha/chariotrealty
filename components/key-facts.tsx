@@ -7,7 +7,8 @@ function formatLabel(label: string) {
 export function KeyFacts({ listing }: { listing: Listing }) {
   const items: { label: string; value: string }[] = [];
 
-  if (listing.configuration) items.push({ label: "Configuration", value: listing.configuration });
+  const config = listing.configuration ? /^\d+$/.test(listing.configuration) ? `${listing.configuration} BHK` : listing.configuration : undefined;
+  if (config) items.push({ label: "Configuration", value: config });
   if (listing.carpetAreaSqft) items.push({ label: "Carpet Area", value: `${listing.carpetAreaSqft.toLocaleString("en-IN")} sqft` });
   if (listing.possession) items.push({ label: "Possession", value: listing.possession });
   else items.push({ label: "Status", value: "Ready to move" });
@@ -17,9 +18,14 @@ export function KeyFacts({ listing }: { listing: Listing }) {
   }
 
   // Derived facts from listing facts array
+  const seen = new Set(items.map(i => i.label.toLowerCase()));
   for (const f of listing.facts) {
-    const exists = items.find(i => i.label.toLowerCase() === f.label.toLowerCase());
-    if (!exists) items.push({ label: formatLabel(f.label), value: f.value });
+    const label = formatLabel(f.label);
+    const key = label.toLowerCase();
+    if (!seen.has(key)) {
+      items.push({ label, value: f.value });
+      seen.add(key);
+    }
   }
 
   return (
