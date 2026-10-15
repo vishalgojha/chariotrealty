@@ -62,7 +62,7 @@ export function KeyFacts({ listing }: { listing: Listing }) {
             <span key={c.label} className="pill pill-ghost pill-sm">{c.label}: {c.value}</span>
           ))}
           {amenityChips.map(a => (
-            <span key={a} title={a} className="pill pill-ghost pill-sm">{amenityIcon(a)} {a}</span>
+            <span key={a} data-tooltip={a} className="pill pill-ghost pill-sm">{amenityIcon(a)} {a}</span>
           ))}
         </div>
       )}

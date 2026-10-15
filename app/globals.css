@@ -899,7 +899,10 @@ img{max-width:100%;display:block}
 .key-fact-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--grey);margin-bottom:6px}
 .key-fact-value{font-size:14px;font-weight:600;color:var(--navy)}
 .key-facts-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.key-facts-chips .pill{font-size:11px;padding:6px 10px}
+.key-facts-chips .pill{font-size:11px;padding:6px 10px;position:relative}
+.key-facts-chips .pill[data-tooltip]{cursor:help}
+.key-facts-chips .pill[data-tooltip]::after{content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) translateY(4px);white-space:nowrap;background:var(--navy);color:var(--white);font-size:11px;padding:6px 8px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;box-shadow:var(--sh-1);z-index:10}
+.key-facts-chips .pill[data-tooltip]:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}
 
 .amenities-grid{margin:18px 0}
 .amenities-grid h3{font-family:var(--sans);font-size:16px;font-weight:700;color:var(--navy);margin:0 0 12px}
