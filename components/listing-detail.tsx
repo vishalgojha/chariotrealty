@@ -98,6 +98,13 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
             {listing.tagline ? <p className="detail-tagline">{listing.tagline}</p> : null}
           </section>
 
+          {listing.description ? (
+            <section className="detail-section">
+              <h2>Description</h2>
+              <p>{listing.description}</p>
+            </section>
+          ) : null}
+
           {listing.amenities.length ? <div className="detail-amenities">{listing.amenities.map((amenity) => <span key={amenity}>{amenity}</span>)}</div> : null}
 
           {listing.projectDetails.length ? (
@@ -109,13 +116,6 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
             </section>
           ) : null}
 
-          {listing.description ? (
-            <section className="detail-section">
-              <h2>Description</h2>
-              <p>{listing.description}</p>
-            </section>
-          ) : null}
-
           {listing.mediaLinks.length ? (
             <div className="detail-media-link">
               {listing.mediaLinks.map((link) => <a key={link.href} className="pill pill-gold pill-sm" href={link.href} target="_blank" rel="noreferrer">
@@ -123,6 +123,17 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
               </a>)}
             </div>
           ) : null}
+
+          <section className="detail-section detail-map">
+            <h2>Location</h2>
+            <iframe
+              title={`Map of ${listing.name}`}
+              src={`https://maps.google.com/maps?q=${encodeURIComponent(`${listing.name} ${listing.location}`)}&z=15&output=embed`}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          </section>
         </div>
       </div>
 

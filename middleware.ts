@@ -9,6 +9,10 @@ const legacyRedirects: Record<string, string> = {
 };
 
 export function middleware(request: NextRequest) {
+  const { hostname } = request.nextUrl;
+  if (hostname === "app.chariotrealty.in" && request.nextUrl.pathname === "/") {
+    return NextResponse.redirect(new URL("/admin", request.url));
+  }
   const target = legacyRedirects[request.nextUrl.pathname];
   if (target) {
     return NextResponse.redirect(new URL(target, request.url), 308);
