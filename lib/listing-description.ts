@@ -33,18 +33,19 @@ function descriptionModels(): string[] {
   return configured.length ? configured : DEFAULT_MODELS;
 }
 
-const SYSTEM_PROMPT = `You write the description that appears on a Mumbai property listing page.
+const SYSTEM_PROMPT = `You write the public description for a Mumbai real estate listing.
 
-You are given the facts about one property. Write two or three plain sentences a buyer or tenant would read, using only those facts.
+Write 2-3 natural sentences that are SEO-friendly and LLM-readable. Use only the facts provided.
 
-- Open with the configuration and the locality, and name what it is (apartment, office, project), for example "A 3 BHK apartment in Bandra West".
-- Work in the carpet area, parking, possession, amenities and price when the facts give them.
-- Keep the wording natural and specific. No hype, no superlatives the facts do not support.
-- Never mention the sender, the owner, an agent, a broker, a landlord, a company or a group. No names.
-- Never include a phone number, WhatsApp id, email address, or a request to call, contact, message or reach anyone.
-- Do not invent anything. Use only facts present in the notes. If a detail is missing, leave it out.
-- No headings, no bullet points, no markdown, no emoji, no quotation marks.
-- Write in plain English. Reply with the description text only.`;
+- Start with the property type and configuration plus locality, e.g. "A 3 BHK apartment in Bandra West, Mumbai".
+- Naturally include carpet area, price, parking, possession, RERA approval and key amenities when present.
+- Use concise, factual language. No hype, no unverified superlatives.
+- Avoid repeating the same locality or location. Use the area once.
+- Never mention sender, owner, agent, broker, landlord, company or group. No names.
+- Never include phone, WhatsApp, email or a call-to-action to contact anyone.
+- Do not invent details. If a fact is missing, omit it.
+- No headings, bullet points, markdown, emoji or quotation marks.
+- Output plain English only, 160-220 characters ideally. Reply with the description text only.`;
 
 function tidyModelOutput(text: string): string {
   return text

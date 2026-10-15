@@ -129,31 +129,39 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     }
   }
 
-  // The generator works from facts, so the form is handed to it as one when no
-  // notes have been typed. Numbers are coerced here because the form holds them
-  // as strings.
-  function listingFacts() {
-    const values = customValues;
-    const parking = Number(values.parking);
-    return {
-      name: form.name || undefined,
-      category: form.category,
-      transaction: /\/\s*mo|\bmonth|\brent\b/i.test(form.price) ? "rent" : "sale",
-      area: [form.location, form.locality, form.micro_market].map((part) => part.trim()).filter(Boolean).join(", "),
-      configuration: form.configuration || undefined,
-      carpetAreaSqft: form.carpet_area_sqft ? Number(form.carpet_area_sqft) : undefined,
-      price: form.price || undefined,
-      parking: Number.isFinite(parking) && parking > 0 ? parking : undefined,
-      possession: typeof values.possession === "string" ? values.possession : undefined,
-      reraApproved: values.rera_approved === true || values.rera_approved === "true",
-      amenities: Array.isArray(values.amenities) ? values.amenities : undefined,
-      highlights: [
-        values.balcony === 1 || values.balcony === true || values.balcony === "true" ? "Balcony: yes" : "",
-        values.servant_room_washroom === true || values.servant_room_washroom === "true" ? "Servant room with washroom: yes" : "",
-        typeof values.furnishing === "string" && values.furnishing ? `Furnishing: ${values.furnishing}` : "",
-      ].filter(Boolean),
-    };
-  }
+   // The generator works from facts, so the form is handed to it as one when no
+   // notes have been typed. Numbers are coerced here because the form holds them
+   // as strings.
+   function listingFacts() {
+     const values = customValues;
+     const parking = Number(values.parking);
+     const parts = [form.location, form.locality, form.micro_market].map((p) => p?.trim()).filter(Boolean);
+     const seen = new Set<string>();
+     const area = parts.filter((p) => {
+       const low = p.toLowerCase();
+       if (seen.has(low)) return false;
+       seen.add(low);
+       return true;
+     }).join(", ");
+     return {
+       name: form.name || undefined,
+       category: form.category,
+       transaction: /\/\s*mo|\bmonth|\brent\b/i.test(form.price) ? "rent" : "sale",
+       area,
+       configuration: form.configuration || undefined,
+       carpetAreaSqft: form.carpet_area_sqft ? Number(form.carpet_area_sqft) : undefined,
+       price: form.price || undefined,
+       parking: Number.isFinite(parking) && parking > 0 ? parking : undefined,
+       possession: typeof values.possession === "string" ? values.possession : undefined,
+       reraApproved: values.rera_approved === true || values.rera_approved === "true",
+       amenities: Array.isArray(values.amenities) ? values.amenities : undefined,
+       highlights: [
+         values.balcony === 1 || values.balcony === true || values.balcony === "true" ? "Balcony: yes" : "",
+         values.servant_room_washroom === true || values.servant_room_washroom === "true" ? "Servant room with washroom: yes" : "",
+         typeof values.furnishing === "string" && values.furnishing ? `Furnishing: ${values.furnishing}` : "",
+       ].filter(Boolean),
+     };
+   }
 
   // The model reads the notes when there are any, and the fields above when there
   // are not, so an existing listing with no source message can still be written.
