@@ -28,8 +28,9 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const [listings, setListings] = useState<Listing[]>(initialListings);
   const [filter, setFilter] = useState<ListingFilter>("all");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"relevant" | "price-asc" | "price-desc" | "newest">("relevant");
 
-  const updateParams = (next: Partial<{ q: string; filter: ListingFilter }>) => {
+  const updateParams = (next: Partial<{ q: string; filter: ListingFilter; sort?: string }>) => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (next.q !== undefined) {
@@ -39,6 +40,10 @@ export function HomeClient({ initialListings }: HomeClientProps) {
     if (next.filter !== undefined) {
       if (next.filter && next.filter !== "all") params.set("filter", next.filter);
       else params.delete("filter");
+    }
+    if (next.sort !== undefined) {
+      if (next.sort && next.sort !== "relevant") params.set("sort", next.sort);
+      else params.delete("sort");
     }
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, "", newUrl);
@@ -52,6 +57,11 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const setFilterWithUrl = (value: ListingFilter) => {
     setFilter(value);
     updateParams({ filter: value });
+  };
+
+  const setSortWithUrl = (value: "relevant" | "price-asc" | "price-desc" | "newest") => {
+    setSort(value);
+    updateParams({ sort: value });
   };
   const [modal, setModal] = useState<LeadKind | null>(null);
   const [loaded, setLoaded] = useState(initialListings.length > 0);
@@ -73,8 +83,10 @@ export function HomeClient({ initialListings }: HomeClientProps) {
     const params = new URLSearchParams(window.location.search);
     const q = params.get("q") || "";
     const f = params.get("filter") as ListingFilter || "all";
+    const s = params.get("sort") as "relevant" | "price-asc" | "price-desc" | "newest" || "relevant";
     setQuery(q);
     setFilter(f);
+    setSort(s);
   }, []);
 
   useEffect(() => {
@@ -127,14 +139,28 @@ export function HomeClient({ initialListings }: HomeClientProps) {
     });
   }, [listings, filter, query]);
 
+  const sortedFiltered = useMemo(() => {
+    const base = [...filtered];
+    switch (sort) {
+      case "price-asc":
+        return base.sort((a, b) => a.priceValue - b.priceValue);
+      case "price-desc":
+        return base.sort((a, b) => b.priceValue - a.priceValue);
+      case "newest":
+        return base.sort((a, b) => b.slug.localeCompare(a.slug));
+      default:
+        return base;
+    }
+  }, [filtered, sort]);
+
   const displayListings = useMemo(
-    () => filtered.filter((listing) => listing.category !== "under-construction").slice(0, 12),
-    [filtered],
+    () => sortedFiltered.filter((listing) => listing.category !== "under-construction").slice(0, 12),
+    [sortedFiltered],
   );
 
   const underConstructionListings = useMemo(
-    () => filtered.filter((listing) => listing.category === "under-construction").slice(0, 12),
-    [filtered],
+    () => sortedFiltered.filter((listing) => listing.category === "under-construction").slice(0, 12),
+    [sortedFiltered],
   );
 
   const toggleSelect = (slug: string) => {
@@ -244,6 +270,47 @@ export function HomeClient({ initialListings }: HomeClientProps) {
             </div>
           </div>
         </section>
+
+        <div className="sticky-filters">
+          <div className="shell sticky-filters-inner">
+            <div className="sticky-search">
+              <SearchIcon size={16} />
+              <input
+                type="search"
+                placeholder="Search listings..."
+                aria-label="Search listings sticky"
+                value={query}
+                onChange={(e) => setQueryWithUrl(e.target.value)}
+              />
+            </div>
+            <div className="sticky-chips">
+              {LISTING_FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  className={`pill ${filter === f.value ? "pill-dark" : "pill-ghost"} pill-sm`}
+                  onClick={() => setFilterWithUrl(f.value)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="sticky-sort">
+              <label className="sr-only" htmlFor="sort-select">Sort</label>
+              <select
+                id="sort-select"
+                value={sort}
+                onChange={(e) => setSortWithUrl(e.target.value as any)}
+                className="select-chip"
+              >
+                <option value="relevant">Relevant</option>
+                <option value="price-asc">Price: Low to High</option>
+                <option value="price-desc">Price: High to Low</option>
+                <option value="newest">Newest</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
         <section className="section-block section-alt" id="opportunities">
           <div className="shell">
