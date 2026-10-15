@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "check:copy": "node --import ./scripts/register-alias.mjs scripts/check-public-copy.mjs"
+    "check:copy": "node --import ./scripts/register-alias.mjs scripts/check-public-copy.mjs",
+    "descriptions:backfill": "node --import ./scripts/register-alias.mjs scripts/generate-descriptions.mjs",
+    "descriptions:backfill": "node --import ./scripts/register-alias.mjs scripts/generate-descriptions.mjs"
   },
   "dependencies": {
     "@composio/core": "^0.18.1",

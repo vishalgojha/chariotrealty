@@ -129,17 +129,44 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     }
   }
 
-  // The model reads notes, not the stored source message, so an existing listing
-  // is loaded with its own description already in the box for editing.
-  async function writeDescription() {
+  // The generator works from facts, so the form is handed to it as one when no
+  // notes have been typed. Numbers are coerced here because the form holds them
+  // as strings.
+  function listingFacts() {
+    const values = customValues;
+    const parking = Number(values.parking);
+    return {
+      name: form.name || undefined,
+      category: form.category,
+      transaction: /\/\s*mo|\bmonth|\brent\b/i.test(form.price) ? "rent" : "sale",
+      area: [form.location, form.locality, form.micro_market].map((part) => part.trim()).filter(Boolean).join(", "),
+      configuration: form.configuration || undefined,
+      carpetAreaSqft: form.carpet_area_sqft ? Number(form.carpet_area_sqft) : undefined,
+      price: form.price || undefined,
+      parking: Number.isFinite(parking) && parking > 0 ? parking : undefined,
+      possession: typeof values.possession === "string" ? values.possession : undefined,
+      reraApproved: values.rera_approved === true || values.rera_approved === "true",
+      amenities: Array.isArray(values.amenities) ? values.amenities : undefined,
+      highlights: [
+        values.balcony === 1 || values.balcony === true || values.balcony === "true" ? "Balcony: yes" : "",
+        values.servant_room_washroom === true || values.servant_room_washroom === "true" ? "Servant room with washroom: yes" : "",
+        typeof values.furnishing === "string" && values.furnishing ? `Furnishing: ${values.furnishing}` : "",
+      ].filter(Boolean),
+    };
+  }
+
+  // The model reads the notes when there are any, and the fields above when there
+  // are not, so an existing listing with no source message can still be written.
+  // Nothing is saved until the form is submitted.
+  async function writeDescription(regenerate = false) {
     setWriting(true);
     setError("");
     try {
-      const response = await api.post("/api/inventory/description", { notes });
+      const response = await api.post("/api/inventory/description", { notes, listing: listingFacts() });
       const payload = await readJson(response);
       if (!response.ok) throw new Error(payload.error || "Could not write a description");
       setDescription(String(payload.data?.description || ""));
-      notify("Description written — save to publish it");
+      notify(regenerate ? "New description written — save to publish it" : "Description written — save to publish it");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not write a description");
     } finally {
@@ -151,6 +178,9 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
     setEditing(true);
     setCustomValues(property.custom_fields || {});
     setDescription(String((property.custom_fields as Record<string, unknown> | undefined)?.public_description || ""));
+    // The stored description is the message the listing was parsed from, which is
+    // exactly the raw material the generator wants. It is internal, never published.
+    setNotes(property.description || "");
     setError("");
     setForm({
       id: property.id,
@@ -430,30 +460,36 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
               {busy && <em> Uploading…</em>}
             </small>
           </label>
-          <div className="field description-builder">
-            <span>Website description</span>
+          <div className="field description-builder" style={{ gridColumn: "1 / -1" }}>
+            <span>Public description — shown on the website</span>
             <textarea
               className="textarea"
               rows={4}
+              placeholder="Generate one from the notes below, or write your own."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+            <div className="field-controls" style={{ marginTop: 8 }}>
+              <button type="button" className="btn btn-dark btn-sm" onClick={() => writeDescription(false)} disabled={writing}>
+                <Icon name="spark" size={14} />
+                {writing ? "Writing…" : "Generate"}
+              </button>
+              <button type="button" className="btn btn-light btn-sm" onClick={() => writeDescription(true)} disabled={writing}>
+                {writing ? "Writing…" : "Regenerate"}
+              </button>
+              <small className="field-hint">Reads the notes below, or the fields above when the notes are empty. Names and numbers are stripped automatically.</small>
+            </div>
+          </div>
+          <div className="field description-builder">
+            <span>Notes for the generator — not published</span>
+            <textarea
+              className="textarea"
+              rows={3}
               placeholder={NOTES_PLACEHOLDER}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
-            <small className="field-hint">
-              Paste the WhatsApp forward or type what you know. The AI writes the public description from it.
-              <button type="button" className="btn btn-light btn-sm" onClick={writeDescription} disabled={writing || notes.trim().length < 12}>
-                <Icon name="spark" size={14} />
-                {writing ? "Writing…" : "Write description"}
-              </button>
-            </small>
           </div>
-          {description ? (
-            <Note tone="success">
-              <strong>Description</strong>
-              <span className="description-preview">{description}</span>
-              <small className="field-hint">Saved with the listing. Names and numbers are stripped automatically.</small>
-            </Note>
-          ) : null}
           {fields.map((field) => (
             <label className="field" key={field.id}>
               <span>{field.label}</span>

@@ -6,17 +6,40 @@
 // the model is told to leave it out and the result is then sanitised anyway: a
 // model instruction is not a guarantee, and this text goes straight to the
 // public site.
+//
+// Generation runs on OpenRouter's free tier. Those endpoints are shared and get
+// rate-limited without warning, so several are tried in turn rather than letting
+// one busy model fail the write.
 import { identityTermsFrom, sanitizePublicCopy } from "@/lib/public-copy";
 
-const SARVAM_MODEL = "sarvam-105b";
-const SARVAM_URL = "https://api.sarvam.ai/v1/chat/completions";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const REQUEST_TIMEOUT_MS = 30_000;
 
-const SYSTEM_PROMPT = `You write the description shown on a Mumbai property website.
+// Tried in order. Free models, so a 429 or a gated endpoint just moves on to the
+// next. Override with OPENROUTER_DESCRIPTION_MODEL (a comma-separated list).
+const DEFAULT_MODELS = [
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "google/gemma-4-31b-it:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "dots-studio/dots-3-note-preview:free",
+  "nvidia/nemotron-3.5-lightning:free",
+];
 
-Rewrite the seller's or agent's raw notes into one or two plain sentences a buyer would read.
+function descriptionModels(): string[] {
+  const configured = (process.env.OPENROUTER_DESCRIPTION_MODEL || "")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean);
+  return configured.length ? configured : DEFAULT_MODELS;
+}
 
-Rules:
-- Describe only the property: configuration, carpet area, floor, furnishing, amenities, locality, price if stated, possession, and what is included.
+const SYSTEM_PROMPT = `You write the description that appears on a Mumbai property listing page.
+
+You are given the facts about one property. Write two or three plain sentences a buyer or tenant would read, using only those facts.
+
+- Open with the configuration and the locality, and name what it is (apartment, office, project), for example "A 3 BHK apartment in Bandra West".
+- Work in the carpet area, parking, possession, amenities and price when the facts give them.
+- Keep the wording natural and specific. No hype, no superlatives the facts do not support.
 - Never mention the sender, the owner, an agent, a broker, a landlord, a company or a group. No names.
 - Never include a phone number, WhatsApp id, email address, or a request to call, contact, message or reach anyone.
 - Do not invent anything. Use only facts present in the notes. If a detail is missing, leave it out.
@@ -33,17 +56,117 @@ function tidyModelOutput(text: string): string {
 }
 
 export class DescriptionError extends Error {}
+/** The model could not be reached or every free model failed. Retryable. */
+export class DescriptionUnavailableError extends DescriptionError {}
+
+/** The facts the generator can be given, from a form or a stored row. */
+export type DescriptionFacts = {
+  name?: string;
+  category?: string;
+  /** "sale" or "rent", when known. */
+  transaction?: string;
+  /** Area as it should read in a sentence, e.g. "Hill Road, Bandra West". */
+  area?: string;
+  configuration?: string;
+  carpetAreaSqft?: number;
+  /** Already formatted, e.g. "₹3.50L" or "₹2.90L / mo". */
+  price?: string;
+  parking?: number;
+  possession?: string;
+  reraApproved?: boolean;
+  amenities?: string[];
+  /** Extra one-line facts such as "Balcony: yes". */
+  highlights?: string[];
+};
+
+function fact(label: string, value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (Array.isArray(value)) {
+    const items = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    return items.length ? `${label}: ${items.join(", ")}` : null;
+  }
+  if (typeof value === "boolean") return value ? `${label}: yes` : null;
+  return `${label}: ${String(value).trim()}`;
+}
+
+// Turns a stored row or an admin form into the short brief the model reads.
+// Labelled in plain words, because the model is asked to write from facts and an
+// unlabelled "3 / Bandra West / 2.9" gives it nothing to attach a noun to.
+export function descriptionNotes(facts: DescriptionFacts): string {
+  const category = (facts.category || "").trim();
+  const transaction = facts.transaction === "rent" ? "for rent" : facts.transaction === "sale" ? "for sale" : "";
+  const type = [category && category !== "residential" ? category : category === "residential" ? "apartment" : category, transaction]
+    .filter(Boolean)
+    .join(" ");
+
+  let configuration = (facts.configuration || "").trim();
+  if (/^\d+(?:\.\d+)?$/.test(configuration)) {
+    configuration = category === "commercial" ? configuration : `${configuration} BHK`;
+  }
+
+  const lines = [
+    fact("Property", facts.name),
+    fact("Type", type),
+    fact("Locality", facts.area),
+    fact("Configuration", configuration),
+    fact("Carpet area", facts.carpetAreaSqft ? `${facts.carpetAreaSqft.toLocaleString("en-IN")} sqft` : null),
+    fact("Price", facts.price),
+    fact("Parking", facts.parking ? `${facts.parking} covered ${facts.parking === 1 ? "space" : "spaces"}` : null),
+    fact("Possession", facts.possession),
+    fact("RERA", facts.reraApproved ? "approved" : null),
+    fact("Amenities", facts.amenities),
+    ...(facts.highlights ?? []).map((item) => (item.trim() ? item.trim() : null)),
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.join("\n");
+}
+
+async function requestDescription(model: string, apiKey: string, notes: string): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://chariotrealty.in",
+        "X-Title": "Chariot Realty",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `Write the website description for this property.\n\n${notes}` },
+        ],
+        temperature: 0.4,
+        max_tokens: 1024,
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: { message?: string };
+    };
+    if (!response.ok) throw new Error(payload?.error?.message || `The model returned HTTP ${response.status}`);
+    return payload?.choices?.[0]?.message?.content || "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
- * Generates a publishable description from raw notes.
+ * Generates a publishable description from raw notes or a facts brief.
  *
  * `identity` is any extra names already known for the listing — the sender and
  * group recorded at extraction time — so a name the model echoed back from
  * elsewhere is still removed.
  *
- * Throws `DescriptionError` when the model is unavailable or the notes hold
- * nothing publishable. Callers fall back to the structured description rather
- * than blocking a listing on a copy failure.
+ * Throws `DescriptionError` when the input holds nothing publishable, and
+ * `DescriptionUnavailableError` when no model could be reached. Callers fall back
+ * to the structured description rather than blocking a listing on a copy failure.
  */
 export async function generatePublicDescription(
   notes: string,
@@ -52,37 +175,24 @@ export async function generatePublicDescription(
   const text = notes.trim();
   if (text.length < 12) throw new DescriptionError("Add a few notes about the property first");
 
-  const apiKey = process.env.SARVAM_API_KEY || "";
+  const apiKey = process.env.OPENROUTER_API_KEY || "";
   if (!apiKey) throw new DescriptionError("Description generation is not configured");
 
-  const response = await fetch(SARVAM_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-subscription-key": apiKey,
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: SARVAM_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Write the website description for this property.\n\n${text.slice(0, 4000)}` },
-      ],
-      temperature: 0.3,
-    }),
-    cache: "no-store",
-  });
+  const terms = Array.from(new Set([...identityTermsFrom(text), ...identity]));
+  const failures: string[] = [];
 
-  const payload = (await response.json().catch(() => ({}))) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    error?: { message?: string };
-  };
-  if (!response.ok) {
-    throw new DescriptionError(payload?.error?.message || `The model returned HTTP ${response.status}`);
+  for (const model of descriptionModels()) {
+    try {
+      const raw = await requestDescription(model, apiKey, text.slice(0, 4000));
+      const description = sanitizePublicCopy(tidyModelOutput(raw), terms);
+      if (description) return description;
+      failures.push(`${model}: empty`);
+    } catch (error) {
+      failures.push(`${model}: ${error instanceof Error ? error.message : "failed"}`);
+    }
   }
 
-  const raw = payload?.choices?.[0]?.message?.content || "";
-  const description = sanitizePublicCopy(tidyModelOutput(raw), Array.from(new Set([...identityTermsFrom(text), ...identity])));
-  if (!description) throw new DescriptionError("Those notes did not contain enough about the property to write a description");
-  return description;
+  throw new DescriptionUnavailableError(
+    `The description model is unavailable right now. Try again in a moment. (${failures.join("; ")})`,
+  );
 }
