@@ -32,6 +32,19 @@ export function KeyFacts({ listing }: { listing: Listing }) {
   const chips = items.filter(i => chipLabels.includes(i.label));
   const amenityChips = listing.amenities?.slice(0, 6) ?? [];
 
+  const amenityIcon = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes("gym") || n.includes("fitness")) return "🏋️";
+    if (n.includes("pool") || n.includes("swimming")) return "🏊";
+    if (n.includes("kids")) return "🧸";
+    if (n.includes("squash")) return "🎾";
+    if (n.includes("golf")) return "⛳";
+    if (n.includes("game") || n.includes("simulator")) return "🎮";
+    if (n.includes("bowling")) return "🎳";
+    if (n.includes("table")) return "🎱";
+    return "✨";
+  };
+
   return (
     <section className="key-facts">
       <h3>Key facts</h3>
@@ -49,7 +62,7 @@ export function KeyFacts({ listing }: { listing: Listing }) {
             <span key={c.label} className="pill pill-ghost pill-sm">{c.label}: {c.value}</span>
           ))}
           {amenityChips.map(a => (
-            <span key={a} className="pill pill-ghost pill-sm">Amenity: {a}</span>
+            <span key={a} title={a} className="pill pill-ghost pill-sm">{amenityIcon(a)} {a}</span>
           ))}
         </div>
       )}
