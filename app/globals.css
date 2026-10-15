@@ -944,9 +944,8 @@ img{max-width:100%;display:block}
 .sticky-search input{border:0;outline:0;background:transparent;font-size:13px;width:100%}
 .sticky-chips{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .sticky-chips::-webkit-scrollbar{display:none}
-.sticky-sort{position:relative}
-.sticky-sort select{font-size:13px;padding-right:28px;appearance:none;background:var(--white);border:1px solid var(--line);border-radius:999px;padding:8px 32px 8px 12px}
-.sticky-sort::after{content:"";position:absolute;right:12px;top:50%;transform:translateY(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--grey);pointer-events:none}
+.sticky-sort{display:flex;gap:6px;flex-wrap:wrap}
+.sticky-sort .pill{font-size:12px}
 @media(max-width:768px){
   .sticky-filters-inner{padding:8px 0;gap:8px}
   .sticky-search{min-width:0;flex:1 1 100%}

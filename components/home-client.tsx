@@ -296,18 +296,21 @@ export function HomeClient({ initialListings }: HomeClientProps) {
               ))}
             </div>
             <div className="sticky-sort">
-              <label className="sr-only" htmlFor="sort-select">Sort</label>
-              <select
-                id="sort-select"
-                value={sort}
-                onChange={(e) => setSortWithUrl(e.target.value as any)}
-                className="select-chip"
-              >
-                <option value="relevant">Relevant</option>
-                <option value="price-asc">Price: Low to High</option>
-                <option value="price-desc">Price: High to Low</option>
-                <option value="newest">Newest</option>
-              </select>
+              {[
+                { value: "relevant", label: "Relevant" },
+                { value: "price-asc", label: "Price ↑" },
+                { value: "price-desc", label: "Price ↓" },
+                { value: "newest", label: "Newest" },
+              ].map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  className={`pill ${sort === s.value ? "pill-dark" : "pill-ghost"} pill-sm`}
+                  onClick={() => setSortWithUrl(s.value as any)}
+                >
+                  {s.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
