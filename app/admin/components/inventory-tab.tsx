@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ChangeEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { readJson } from "../lib/api";
 import { readStoredSession } from "../lib/session";
 import type { CmsField, CmsProperty, CmsFieldType, TypedDraft } from "../lib/types";
@@ -54,6 +54,8 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   const [notes, setNotes] = useState("");
   const [writing, setWriting] = useState(false);
   const [description, setDescription] = useState("");
+  const locationInputRef = useRef<HTMLInputElement | null>(null);
+  const [mapsReady, setMapsReady] = useState(false);
 
   const loadAll = useCallback(async () => {
     const [inventoryResponse, fieldsResponse, draftsResponse] = await Promise.all([
@@ -75,6 +77,51 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!key || mapsReady || typeof window === "undefined") return;
+    if ((window as any).google?.maps?.places) {
+      setMapsReady(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&loading=async`;
+    script.async = true;
+    script.onload = () => setMapsReady(true);
+    document.head.appendChild(script);
+    return () => { /* keep script for session */ };
+  }, [mapsReady]);
+
+  useEffect(() => {
+    if (!mapsReady || !locationInputRef.current) return;
+    const input = locationInputRef.current;
+    const autocomplete = new (window as any).google.maps.places.Autocomplete(input, {
+      componentRestrictions: { country: "in" },
+      fields: ["formatted_address", "address_components"],
+      types: ["geocode"],
+    });
+    autocomplete.addListener("place_changed", () => {
+      const place = autocomplete.getPlace();
+      if (!place.address_components) return;
+      const get = (types: string[]) => {
+        const comp = (place.address_components as any[]).find((c: any) => c.types?.some((t: string) => types.includes(t)));
+        return comp?.long_name;
+      };
+      const locality = get(["locality", "sublocality", "sublocality_level_1"]);
+      const area = get(["administrative_area_level_2"]);
+      const line = place.formatted_address || form.location;
+      patch({ location: line });
+      if (locality && MARKETS.includes(locality as any)) {
+        patch({ locality });
+      } else if (area && MARKETS.includes(area as any)) {
+        patch({ locality: area as any });
+      }
+    });
+    return () => {
+      try { (window as any).google.maps.event.clearInstanceListeners(autocomplete); } catch {}
+    };
+  }, [mapsReady]);
 
   async function addField() {
     if (!draft.label.trim()) return;
@@ -447,7 +494,8 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
           </label>
           <label className="field">
             <span>Location</span>
-            <input className="input" placeholder="e.g. Kalanagar, Bandra East" value={form.location} onChange={(e) => patch({ location: e.target.value })} required />
+            <input ref={locationInputRef} className="input" placeholder="e.g. Kalanagar, Bandra East" value={form.location} onChange={(e) => patch({ location: e.target.value })} required />
+            <small className="field-hint">Start typing, select from Google Places suggestions</small>
           </label>
           <label className="field">
             <span>Image</span>
