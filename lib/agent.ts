@@ -832,7 +832,7 @@ function deriveIdentityFromText(sourceText: string): { name?: string; locality?:
   return identity;
 }
 
-async function extractWhatsappListing(args: Record<string, unknown>): Promise<string> {
+export async function extractWhatsappListing(args: Record<string, unknown>): Promise<string> {
   const { supabaseUrl, serviceKey, whatsappBrokerId } = config();
   if (!supabaseUrl || !serviceKey || !whatsappBrokerId) return noRow("Chariot WhatsApp storage is not configured.");
 
