@@ -94,7 +94,7 @@ export function OverviewTab({ go, api }: { go: (tab: TabId) => void; api: AdminA
       <Panel>
         <PanelHead
           eyebrow="Inventory control"
-          title="Current opportunities"
+          title="Current listings"
           actions={<input className="input" aria-label="Search inventory" placeholder="Search locality or property" value={query} onChange={(event) => setQuery(event.target.value)} />}
         />
         <div className="table-wrap">
@@ -121,7 +121,7 @@ export function OverviewTab({ go, api }: { go: (tab: TabId) => void; api: AdminA
               ))}
             </tbody>
           </table>
-          {!loading && !filtered.length && <p className="empty-state">No Mumbai opportunities match that search.</p>}
+          {!loading && !filtered.length && <p className="empty-state">No Mumbai listings match that search.</p>}
         </div>
       </Panel>
     </div>
