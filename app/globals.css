@@ -936,6 +936,8 @@ img{max-width:100%;display:block}
 .property-card-amenities{display:flex;gap:6px;flex-wrap:wrap}
 .property-card-amenities span{font-size:11px;background:var(--cream);border:1px solid var(--line);padding:4px 8px;border-radius:999px;color:var(--charcoal)}
 .property-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.hero-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.hero-filters .pill{font-size:12px}
 
 .detail-header-block{margin:16px 0 24px}
 .detail-header-block h1{font-size:clamp(24px,4vw,32px);line-height:1.2;margin:0 0 8px;color:var(--navy)}

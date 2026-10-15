@@ -6,6 +6,7 @@ import { CheckIcon, ChevronDownIcon, InstagramIcon, SearchIcon, ShareIcon, Whats
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { PropertyCard } from "@/components/property-card";
 import type { Listing, ListingFilter, Category } from "@/lib/listing";
+import { LISTING_FILTERS } from "@/lib/listing";
 import { organizationJsonLd } from "@/lib/seo";
 import { shareToWhatsApp, shareNative } from "@/lib/share";
 
@@ -27,6 +28,31 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const [listings, setListings] = useState<Listing[]>(initialListings);
   const [filter, setFilter] = useState<ListingFilter>("all");
   const [query, setQuery] = useState("");
+
+  const updateParams = (next: Partial<{ q: string; filter: ListingFilter }>) => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (next.q !== undefined) {
+      if (next.q) params.set("q", next.q);
+      else params.delete("q");
+    }
+    if (next.filter !== undefined) {
+      if (next.filter && next.filter !== "all") params.set("filter", next.filter);
+      else params.delete("filter");
+    }
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, "", newUrl);
+  };
+
+  const setQueryWithUrl = (value: string) => {
+    setQuery(value);
+    updateParams({ q: value });
+  };
+
+  const setFilterWithUrl = (value: ListingFilter) => {
+    setFilter(value);
+    updateParams({ filter: value });
+  };
   const [modal, setModal] = useState<LeadKind | null>(null);
   const [loaded, setLoaded] = useState(initialListings.length > 0);
   const [unavailable, setUnavailable] = useState(initialListings.length === 0);
@@ -39,6 +65,16 @@ export function HomeClient({ initialListings }: HomeClientProps) {
       window.sessionStorage.removeItem(SCROLL_KEY);
       window.scrollTo(0, Number(stored) || 0);
     }
+  }, []);
+
+  // Sync URL params to state on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q") || "";
+    const f = params.get("filter") as ListingFilter || "all";
+    setQuery(q);
+    setFilter(f);
   }, []);
 
   useEffect(() => {
@@ -187,12 +223,24 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                   placeholder="Search by locality, BHK, project..."
                   aria-label="Search listings"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => setQueryWithUrl(e.target.value)}
                 />
                 <button type="submit" className="pill pill-gold pill-sm">
                   Search
                 </button>
               </form>
+            </div>
+            <div className="hero-filters">
+              {LISTING_FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  className={`pill ${filter === f.value ? "pill-dark" : "pill-ghost"} pill-sm`}
+                  onClick={() => setFilterWithUrl(f.value)}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
           </div>
         </section>
@@ -238,7 +286,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
             ) : displayListings.length === 0 ? (
               <div className="empty-state">
                 <p>No listings match your filters.</p>
-                <button type="button" className="pill pill-outline" style={{ marginTop: 10 }} onClick={() => { setQuery(""); setFilter("all"); }}>
+                <button type="button" className="pill pill-outline" style={{ marginTop: 10 }} onClick={() => { setQueryWithUrl(""); setFilterWithUrl("all"); }}>
                   Clear filters
                 </button>
               </div>
