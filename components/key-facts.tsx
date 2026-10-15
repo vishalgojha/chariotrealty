@@ -28,6 +28,9 @@ export function KeyFacts({ listing }: { listing: Listing }) {
     }
   }
 
+  const chipLabels = ["Furnishing", "Parking", "Balcony", "Servant Room Washroom", "RERA"];
+  const chips = items.filter(i => chipLabels.includes(i.label));
+
   return (
     <section className="key-facts">
       <h3>Key facts</h3>
@@ -39,6 +42,13 @@ export function KeyFacts({ listing }: { listing: Listing }) {
           </div>
         ))}
       </div>
+      {chips.length > 0 && (
+        <div className="key-facts-chips">
+          {chips.map(c => (
+            <span key={c.label} className="pill pill-ghost pill-sm">{c.label}: {c.value}</span>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
