@@ -65,7 +65,6 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
               <h1>{listing.name}</h1>
               <div className="detail-price-row">
                 <span className="detail-price">{listing.price}{listing.priceNote ? ` ${listing.priceNote}` : ""}</span>
-                {listing.specsLine && <span className="detail-specs">{listing.specsLine}</span>}
               </div>
               <p className="detail-location-text">{listing.location}</p>
             </div>
