@@ -355,8 +355,10 @@ export function HomeClient({ initialListings }: HomeClientProps) {
               </div>
             ) : displayListings.length === 0 ? (
               <div className="empty-state">
+                <div className="empty-state-icon"><SearchIcon size={28} /></div>
                 <p>No listings match your filters.</p>
-                <button type="button" className="pill pill-outline" style={{ marginTop: 10 }} onClick={() => { setQueryWithUrl(""); setFilterWithUrl("all"); }}>
+                <p className="loc">Try adjusting search or filters, or message Kapil for off-market options.</p>
+                <button type="button" className="pill pill-outline" style={{ marginTop: 12 }} onClick={() => { setQueryWithUrl(""); setFilterWithUrl("all"); setSortWithUrl("relevant"); }}>
                   Clear filters
                 </button>
               </div>

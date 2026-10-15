@@ -936,6 +936,11 @@ img{max-width:100%;display:block}
 .property-card-amenities{display:flex;gap:6px;flex-wrap:wrap}
 .property-card-amenities span{font-size:11px;background:var(--cream);border:1px solid var(--line);padding:4px 8px;border-radius:999px;color:var(--charcoal)}
 .property-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 16px;border:1px dashed var(--line);border-radius:18px;background:var(--cream)}
+.empty-state p{margin:0 0 12px;color:var(--grey)}
+.empty-state-icon{margin-bottom:12px;color:var(--gold-2)}
+.property-card-media.placeholder{background:linear-gradient(90deg,var(--cream) 0%,var(--cream-2) 50%,var(--cream) 100%);background-size:200% 100%;animation:skeleton 1.2s infinite}
+@keyframes skeleton{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .hero-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .hero-filters .pill{font-size:12px}
 .sticky-filters{position:sticky;top:68px;z-index:30;background:rgba(250,246,238,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}

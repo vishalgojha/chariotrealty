@@ -8,7 +8,7 @@ export function PropertyCard({ listing, onSelect, selected }: { listing: Listing
   return (
     <article className="property-card">
       <a className="property-card-link" href={`/properties/${listing.slug}`}>
-        <div className="property-card-media" style={image ? { backgroundImage: `url('${image}')` } : undefined}>
+        <div className={`property-card-media ${!image ? "placeholder" : ""}`} style={image ? { backgroundImage: `url('${image}')` } : undefined}>
           {listing.badge ? <span className={`property-badge ${listing.badgeTone}`}>{listing.badge}</span> : null}
           {onSelect && (
             <button
