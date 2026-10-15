@@ -59,7 +59,7 @@ export function KeyFacts({ listing }: { listing: Listing }) {
       {(chips.length > 0 || amenityChips.length > 0) && (
         <div className="key-facts-chips">
           {chips.map(c => (
-            <span key={c.label} className="pill pill-ghost pill-sm">{c.label}: {c.value}</span>
+            <span key={c.label} data-tooltip={`${c.label}: ${c.value}`} className="pill pill-ghost pill-sm">{c.label}: {c.value}</span>
           ))}
           {amenityChips.map(a => (
             <span key={a} data-tooltip={a} className="pill pill-ghost pill-sm">{amenityIcon(a)} {a}</span>
