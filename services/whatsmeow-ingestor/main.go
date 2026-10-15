@@ -1231,19 +1231,17 @@ func (sm *SessionManager) handleMessage(s *BrokerSession, evt *events.Message) {
 		return
 	}
 	// Some connected WhatsApp accounts are private control planes rather than
-	// market-ingestion sources. For those brokers, only the owner's self-chat
-	// may reach the agent. Drop every other message before logging, media
-	// capture, counters, webhooks, or raw_messages persistence — unless the
-	// broker explicitly opted into group raw storage, which persists group
-	// messages only. Extraction stays on demand, so nothing is derived from
-	// them until Kapil asks the agent for it.
+	// market-ingestion sources. For those brokers the owner's self-chat still
+	// routes to the agent below, but every other message — group or direct,
+	// including media-only — is now persisted to the raw store so the agent and
+	// the admin Messages view can search it. Nothing is forwarded anywhere and
+	// extraction stays on demand, so no listing is derived from a message until
+	// Kapil asks the agent for it.
 	if selfChatOnlyBroker(s.brokerID) && !isOwnWhatsAppJID(s, info.Chat) {
-		if info.IsGroup && groupRawIngestAllowed(s.brokerID) {
-			if _, err := sm.insertRawMessage(s.brokerID, buildGroupRawPayload(s.brokerID, evt, info)); err != nil {
-				log.Printf("[broker %s] group raw message insert failed: %v", s.brokerID, err)
-			} else {
-				log.Printf("[broker %s] group message stored in raw store chat=%s id=%s", s.brokerID, info.Chat.String(), info.ID)
-			}
+		if _, err := sm.insertRawMessage(s.brokerID, buildGroupRawPayload(s.brokerID, evt, info)); err != nil {
+			log.Printf("[broker %s] raw message insert failed chat=%s id=%s: %v", s.brokerID, info.Chat.String(), info.ID, err)
+		} else {
+			log.Printf("[broker %s] raw message stored chat=%s id=%s group=%t", s.brokerID, info.Chat.String(), info.ID, info.IsGroup)
 		}
 		return
 	}
