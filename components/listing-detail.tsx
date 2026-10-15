@@ -62,7 +62,7 @@ export function ListingDetail({ listing, similar }: { listing: Listing; similar:
             <Gallery media={media.length ? media : [{ url: "", type: "image" }]} name={listing.name} />
 
             <div className="detail-header-block">
-              <h1>{listing.name}</h1>
+              <h1><a href="/properties" className="detail-title-link">{listing.name}</a></h1>
               <div className="detail-price-row">
                 <span className="detail-price">{listing.price}{listing.priceNote ? ` ${listing.priceNote}` : ""}</span>
               </div>

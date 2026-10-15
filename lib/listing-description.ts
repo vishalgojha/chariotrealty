@@ -38,7 +38,8 @@ const SYSTEM_PROMPT = `You write the public description for a Mumbai real estate
 Write 2-3 natural sentences that are SEO-friendly and LLM-readable. Use only the facts provided.
 
 - Start with the property type and configuration plus locality, e.g. "A 3 BHK apartment in Bandra West, Mumbai".
-- Naturally include carpet area, price, parking, possession, RERA approval and key amenities when present.
+- Naturally include carpet area, price, parking, possession, RERA approval when present.
+- Do NOT list amenities unless the facts explicitly contain an amenities list. Never add amenities from general knowledge.
 - Use concise, factual language. No hype, no unverified superlatives.
 - Avoid repeating the same locality or location. Use the area once.
 - Never mention sender, owner, agent, broker, landlord, company or group. No names.

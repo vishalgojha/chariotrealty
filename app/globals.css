@@ -967,6 +967,8 @@ img{max-width:100%;display:block}
 
 .detail-header-block{margin:20px 0 28px}
 .detail-header-block h1{font-family:var(--display);font-size:clamp(28px,4.5vw,40px);line-height:1.15;margin:0 0 10px;color:var(--navy);letter-spacing:-0.02em}
+.detail-title-link{color:inherit;text-decoration:none;border-bottom:1px solid transparent;padding-bottom:2px;transition:border-color .15s}
+.detail-title-link:hover{border-bottom-color:var(--gold-2)}
 .detail-price-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px;margin-bottom:8px}
 .detail-price{font-family:var(--display);font-size:clamp(32px,7vw,48px);font-weight:700;color:var(--navy);letter-spacing:-0.01em}
 .detail-location-text{font-size:15px;color:var(--grey);margin:0;font-weight:500}
