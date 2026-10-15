@@ -30,6 +30,7 @@ export function KeyFacts({ listing }: { listing: Listing }) {
 
   const chipLabels = ["Furnishing", "Parking", "Balcony", "Servant Room Washroom", "RERA"];
   const chips = items.filter(i => chipLabels.includes(i.label));
+  const amenityChips = listing.amenities?.slice(0, 6) ?? [];
 
   return (
     <section className="key-facts">
@@ -42,10 +43,13 @@ export function KeyFacts({ listing }: { listing: Listing }) {
           </div>
         ))}
       </div>
-      {chips.length > 0 && (
+      {(chips.length > 0 || amenityChips.length > 0) && (
         <div className="key-facts-chips">
           {chips.map(c => (
             <span key={c.label} className="pill pill-ghost pill-sm">{c.label}: {c.value}</span>
+          ))}
+          {amenityChips.map(a => (
+            <span key={a} className="pill pill-ghost pill-sm">Amenity: {a}</span>
           ))}
         </div>
       )}
