@@ -6,7 +6,7 @@ import { CheckIcon, ChevronDownIcon, InstagramIcon, SearchIcon, ShareIcon, Whats
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { PropertyCard } from "@/components/property-card";
 import type { Listing, ListingFilter, Category } from "@/lib/listing";
-import { LISTING_FILTERS } from "@/lib/listing";
+import { LISTING_FILTERS, matchesFilter } from "@/lib/listing";
 import { organizationJsonLd } from "@/lib/seo";
 import { shareToWhatsApp, shareNative } from "@/lib/share";
 
@@ -126,13 +126,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return listings.filter((l) => {
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "buy" && !(l.price || "").toLowerCase().includes("/mo")) ||
-        (filter === "rent" && (l.price || "").toLowerCase().includes("/mo")) ||
-        (filter === "commercial" && l.category === "commercial") ||
-        (filter === "under-construction" && l.category === "under-construction");
-      if (!matchesFilter) return false;
+      if (!matchesFilter(l, filter)) return false;
       if (!q) return true;
       const hay = [l.name, l.location, l.slug, ...(l.amenities || [])].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);

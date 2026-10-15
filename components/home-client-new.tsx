@@ -6,6 +6,7 @@ import { ChevronDownIcon, InstagramIcon, SearchIcon, WhatsAppIcon } from "@/comp
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { ListingCard, type ListingCardProps } from "@/components/listing-card";
 import type { Listing, ListingFilter, Category } from "@/lib/listing";
+import { matchesFilter } from "@/lib/listing";
 import { organizationJsonLd } from "@/lib/seo";
 
 const SCROLL_KEY = "chariot:listing-scroll";
@@ -76,13 +77,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return listings.filter((l) => {
-      const matchesFilter =
-        filter === "all" ||
-        (filter === "buy" && !(l.price || "").toLowerCase().includes("/mo")) ||
-        (filter === "rent" && (l.price || "").toLowerCase().includes("/mo")) ||
-        (filter === "commercial" && l.category === "commercial") ||
-        (filter === "under-construction" && l.category === "under-construction");
-      if (!matchesFilter) return false;
+      if (!matchesFilter(l, filter)) return false;
       if (!q) return true;
       const hay = [l.name, l.location, l.slug, ...(l.amenities || [])].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);
@@ -100,7 +95,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
         bedsLabel: l.configuration,
         areaLabel: l.area,
         propertyType: normalizeType(l.category),
-        listingType: (l.price || "").toLowerCase().includes("/mo") ? "rent" : "buy",
+        listingType: l.priceUnit === "monthly_rent" ? "rent" : "buy",
         imageUrl: l.media?.[0]?.url,
         availability: undefined,
         verified: l.badgeTone === "verified",
