@@ -170,6 +170,20 @@ async function requestDescription(model: string, apiKey: string, notes: string):
  * `DescriptionUnavailableError` when no model could be reached. Callers fall back
  * to the structured description rather than blocking a listing on a copy failure.
  */
+const AMENITY_KEYWORDS = ["gym","fitness","pool","swimming","kids","squash","golf","simulator","bowling","game","spa","clubhouse","club house","lift","elevator","security","power backup","parking","balcony","servant"];
+
+function stripManufacturedAmenities(text: string, notes: string): string {
+  const notesLow = notes.toLowerCase();
+  const hasAmenityMention = AMENITY_KEYWORDS.some(k => notesLow.includes(k));
+  if (hasAmenityMention) return text;
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const filtered = sentences.filter(s => {
+    const sLow = s.toLowerCase();
+    return !AMENITY_KEYWORDS.some(k => sLow.includes(k));
+  });
+  return filtered.join(" ").trim();
+}
+
 export async function generatePublicDescription(
   notes: string,
   identity: string[] = [],
@@ -186,7 +200,8 @@ export async function generatePublicDescription(
   for (const model of descriptionModels()) {
     try {
       const raw = await requestDescription(model, apiKey, text.slice(0, 4000));
-      const description = sanitizePublicCopy(tidyModelOutput(raw), terms);
+      let description = sanitizePublicCopy(tidyModelOutput(raw), terms);
+      description = stripManufacturedAmenities(description, text);
       if (description) return description;
       failures.push(`${model}: empty`);
     } catch (error) {
