@@ -32,6 +32,10 @@ export const metadata: Metadata = {
     title: "Chariot Realty",
     statusBarStyle: "black-translucent",
   },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-title": "Chariot Realty",
+  },
 };
 
 export const viewport: Viewport = {
