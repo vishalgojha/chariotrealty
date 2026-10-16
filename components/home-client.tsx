@@ -309,6 +309,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
           </div>
         </div>
 
+        {(displayListings.length > 0 || filtered.length === 0) && (
         <section className="section-block section-alt" id="opportunities">
           <div className="shell">
             <div className="section-head">
@@ -347,7 +348,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                   <WhatsAppIcon size={16} /> Message Kapil for current inventory
                 </a>
               </div>
-            ) : displayListings.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-state-icon"><SearchIcon size={28} /></div>
                 <p>No listings match your filters.</p>
@@ -370,7 +371,9 @@ export function HomeClient({ initialListings }: HomeClientProps) {
             )}
           </div>
         </section>
+        )}
 
+        {(filter === "all" || underConstructionListings.length > 0) && (
         <section className="section-block" id="under-construction">
           <div className="shell">
             <div className="section-head">
@@ -398,6 +401,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
             )}
           </div>
         </section>
+        )}
 
         <section className="section-block">
           <div className="shell">

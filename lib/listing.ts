@@ -375,12 +375,26 @@ export const LISTING_FILTERS: { value: ListingFilter; label: string }[] = [
   { value: "under-construction", label: "Under Construction" },
 ];
 
+/**
+ * Whether a listing is let rather than sold.
+ *
+ * The stored price unit cannot be trusted on its own: a rental is often saved
+ * as `total_price` while its price still reads "3.50 L / mo", and filtering by
+ * the unit alone pushed those rentals into "For Sale". The price text is
+ * cross-checked the same way `priceParts` renders it, so the filter that a
+ * visitor taps always agrees with the price shown on the card.
+ */
+export function isRentalListing(listing: Listing): boolean {
+  if (listing.priceUnit === "monthly_rent") return true;
+  return /\/\s*mo(?:nth)?(?:ly)?\b|\b(?:per\s+month|monthly)\b/i.test(`${listing.price} ${listing.priceNote ?? ""}`);
+}
+
 export function matchesFilter(listing: Listing, filter: ListingFilter): boolean {
   if (filter === "all") return true;
   if (filter === "commercial") return listing.category === "commercial";
-  if (filter === "rent") return listing.priceUnit === "monthly_rent";
   if (filter === "under-construction") return listing.category === "under-construction";
-  return listing.priceUnit !== "monthly_rent" && listing.category !== "commercial";
+  if (filter === "rent") return isRentalListing(listing);
+  return !isRentalListing(listing) && listing.category !== "commercial";
 }
 
 export function searchListings(listings: Listing[], query: string): Listing[] {
