@@ -931,6 +931,7 @@ img{max-width:100%;display:block}
 @media(min-width:1024px){
   .detail-redesign-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.9fr);gap:32px;align-items:start}
   .detail-redesign-main{min-width:0}
+}
 
 .property-card{background:var(--white);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--sh-1);transition:transform .18s ease,box-shadow .18s ease}
 .property-card:hover{transform:translateY(-2px);box-shadow:var(--sh-2)}
@@ -980,4 +981,3 @@ img{max-width:100%;display:block}
 .detail-price-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px;margin-bottom:8px}
 .detail-price{font-family:var(--display);font-size:clamp(32px,7vw,48px);font-weight:700;color:var(--navy);letter-spacing:-0.01em}
 .detail-location-text{font-size:15px;color:var(--grey);margin:0;font-weight:500}
-}
