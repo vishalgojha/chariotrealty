@@ -26,7 +26,7 @@ type StatusFilter = "" | "none" | "extracted";
 
 function previewOf(message: RawMessage): string {
   const text = String(message.message || "");
-  if (text) return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+  if (text) return text;
   return message.message_type && message.message_type !== "text" ? `[${message.message_type}]` : "—";
 }
 
