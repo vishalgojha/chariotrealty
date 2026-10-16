@@ -22,8 +22,7 @@ export const metadata: Metadata = {
     description: "Verified prime rentals, corporate workspaces, and direct developer mandates across Bandra and BKC.",
     images: ["/apple-touch-icon.png"],
   },
-  // No manifest here. Only one can apply per page, and the public site and the
-  // desk each need their own; they are declared in their own layouts.
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: ["/favicon.ico", "/favicon.png"],
     apple: "/apple-touch-icon.png",

@@ -1,4 +1,5 @@
 import { CheckIcon } from "./icons";
+import Image from "next/image";
 import type { Listing } from "@/lib/listing";
 
 export function PropertyCard({ listing, onSelect, selected }: { listing: Listing; onSelect?: (slug: string) => void; selected?: boolean }) {
@@ -8,7 +9,8 @@ export function PropertyCard({ listing, onSelect, selected }: { listing: Listing
   return (
     <article className="property-card">
       <a className="property-card-link" href={`/properties/${listing.slug}`}>
-        <div className={`property-card-media ${!image ? "placeholder" : ""}`} style={image ? { backgroundImage: `url('${image}')` } : undefined}>
+        <div className={`property-card-media ${!image ? "placeholder" : ""}`}>
+          {image && <Image src={image} alt={listing.name} fill className="property-card-img" unoptimized />}
           {listing.badge ? <span className={`property-badge ${listing.badgeTone}`}>{listing.badge}</span> : null}
           {onSelect && (
             <button
