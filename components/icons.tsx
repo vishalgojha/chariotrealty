@@ -119,6 +119,14 @@ export function CloseIcon({ size = 16, className }: IconProps) {
   );
 }
 
+export function FilterIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 5h18l-7 8v5l-4 2v-7z" />
+    </svg>
+  );
+}
+
 export function ShareIcon({ size = 16, className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

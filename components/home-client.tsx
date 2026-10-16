@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AboutUs } from "@/components/about-us";
-import { CheckIcon, ChevronDownIcon, InstagramIcon, SearchIcon, ShareIcon, WhatsAppIcon } from "@/components/icons";
+import { CheckIcon, ChevronDownIcon, FilterIcon, InstagramIcon, SearchIcon, ShareIcon, WhatsAppIcon } from "@/components/icons";
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { PropertyCard } from "@/components/property-card";
 import type { Listing, ListingFilter, Category } from "@/lib/listing";
@@ -12,6 +12,13 @@ import { shareToWhatsApp, shareNative } from "@/lib/share";
 
 const SCROLL_KEY = "chariot:listing-scroll";
 const INSTAGRAM = "https://instagram.com/chariotrealty.in";
+
+const SORTS: { value: "relevant" | "price-asc" | "price-desc" | "newest"; label: string }[] = [
+  { value: "relevant", label: "Relevant" },
+  { value: "price-asc", label: "Price ↑" },
+  { value: "price-desc", label: "Price ↓" },
+  { value: "newest", label: "Newest" },
+];
 
 function waa(message: string) {
   return `https://wa.me/919773757759?text=${encodeURIComponent(message)}`;
@@ -29,6 +36,8 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const [filter, setFilter] = useState<ListingFilter>("all");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"relevant" | "price-asc" | "price-desc" | "newest">("relevant");
+  const [panel, setPanel] = useState<null | "filters" | "sort">(null);
+  const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Relevant";
 
   const updateParams = (next: Partial<{ q: string; filter: ListingFilter; sort?: string }>) => {
     if (typeof window === "undefined") return;
@@ -289,23 +298,70 @@ export function HomeClient({ initialListings }: HomeClientProps) {
               ))}
             </div>
             <div className="sticky-sort">
-              {[
-                { value: "relevant", label: "Relevant" },
-                { value: "price-asc", label: "Price ↑" },
-                { value: "price-desc", label: "Price ↓" },
-                { value: "newest", label: "Newest" },
-              ].map((s) => (
+              {SORTS.map((s) => (
                 <button
                   key={s.value}
                   type="button"
                   className={`pill ${sort === s.value ? "pill-dark" : "pill-ghost"} pill-sm`}
-                  onClick={() => setSortWithUrl(s.value as any)}
+                  onClick={() => setSortWithUrl(s.value)}
                 >
                   {s.label}
                 </button>
               ))}
             </div>
+
+            <div className="sticky-actions">
+              <button
+                type="button"
+                className={`sticky-action ${filter !== "all" ? "is-active" : ""}`}
+                aria-expanded={panel === "filters"}
+                onClick={() => setPanel((p) => (p === "filters" ? null : "filters"))}
+              >
+                <FilterIcon size={14} />
+                Filters
+              </button>
+              <button
+                type="button"
+                className={`sticky-action ${sort !== "relevant" ? "is-active" : ""}`}
+                aria-expanded={panel === "sort"}
+                onClick={() => setPanel((p) => (p === "sort" ? null : "sort"))}
+              >
+                {sortLabel}
+                <ChevronDownIcon size={14} />
+              </button>
+            </div>
           </div>
+
+          {panel === "filters" && (
+            <div className="shell filter-panel">
+              {LISTING_FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  className={`pill ${filter === f.value ? "pill-dark" : "pill-ghost"} pill-sm`}
+                  onClick={() => { setFilterWithUrl(f.value); setPanel(null); }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {panel === "sort" && (
+            <div className="shell filter-panel filter-panel-list">
+              {SORTS.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  className={`filter-option ${sort === s.value ? "is-active" : ""}`}
+                  onClick={() => { setSortWithUrl(s.value); setPanel(null); }}
+                >
+                  <span>{s.label}</span>
+                  {sort === s.value && <CheckIcon size={14} />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {(displayListings.length > 0 || filtered.length === 0) && (
