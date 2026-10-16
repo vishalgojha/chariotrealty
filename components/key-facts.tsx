@@ -30,21 +30,6 @@ export function KeyFacts({ listing }: { listing: Listing }) {
 
   const chipLabels = ["Furnishing", "Parking", "Balcony", "Servant Room Washroom", "RERA"];
   const chips = items.filter(i => chipLabels.includes(i.label));
-  const amenityChips = listing.amenities?.slice(0, 6) ?? [];
-
-  const amenityIcon = (name: string) => {
-    const n = name.toLowerCase();
-    if (n.includes("gym") || n.includes("fitness")) return "🏋️";
-    if (n.includes("pool") || n.includes("swimming")) return "🏊";
-    if (n.includes("kids")) return "🧸";
-    if (n.includes("squash")) return "🎾";
-    if (n.includes("golf")) return "⛳";
-    if (n.includes("game") || n.includes("simulator")) return "🎮";
-    if (n.includes("bowling")) return "🎳";
-    if (n.includes("table")) return "🎱";
-    return "✨";
-  };
-
   return (
     <section className="key-facts">
       <h3>Key facts</h3>
@@ -56,13 +41,10 @@ export function KeyFacts({ listing }: { listing: Listing }) {
           </div>
         ))}
       </div>
-      {(chips.length > 0 || amenityChips.length > 0) && (
+      {chips.length > 0 && (
         <div className="key-facts-chips">
           {chips.map(c => (
             <span key={c.label} data-tooltip={`${c.label}: ${c.value}`} className="pill pill-ghost pill-sm">{c.label}: {c.value}</span>
-          ))}
-          {amenityChips.map(a => (
-            <span key={a} data-tooltip={a} className="pill pill-ghost pill-sm">{amenityIcon(a)} {a}</span>
           ))}
         </div>
       )}

@@ -11,11 +11,6 @@ export function EnquiryCard({ listing }: { listing: Listing }) {
         <span>Connect directly with Kapil</span>
       </div>
 
-      <div className="enquiry-price">
-        <div className="enquiry-price-label">Asking price</div>
-        <div className="enquiry-price-value">{listing.price}{listing.priceNote ? ` ${listing.priceNote}` : ""}</div>
-      </div>
-
       <div className="enquiry-actions">
         <a
           className="pill pill-dark pill-block"
