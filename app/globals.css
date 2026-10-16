@@ -983,10 +983,12 @@ img{max-width:100%;display:block}
   /* Keep one compact search control available on phones. The desktop row
      hides this field because the hero already owns search; on mobile the
      hero controls collapse, so this is the primary way to filter listings. */
-  .sticky-search{display:flex;min-width:0;flex:1 1 auto;padding:5px 12px}
+  /* The hero already contains the phone search field; keep this toolbar for
+     filter and sort actions so mobile never shows two search boxes. */
+  .sticky-search{display:none}
   .sticky-search input{font-size:16px}
   .sticky-chips,.sticky-sort{display:none}
-  .sticky-actions{display:flex;gap:6px;flex:0 0 auto}
+  .sticky-actions{display:flex;gap:6px;flex:0 0 auto;margin-left:auto}
   .sticky-action{display:inline-flex;align-items:center;gap:5px;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--white);color:var(--navy);font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer}
   .sticky-action.is-active{background:var(--navy);border-color:var(--navy);color:#fff}
   .filter-panel{display:flex;flex-wrap:wrap;gap:8px;padding:8px 16px 14px;background:rgba(250,246,238,.98);border-top:1px solid var(--line);box-shadow:0 10px 18px rgba(15,27,61,.08)}
