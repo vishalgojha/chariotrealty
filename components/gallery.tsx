@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from "./icons";
 
 type MediaItem = { url: string; type: "image" | "video" };
@@ -60,11 +61,11 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && openLightbox(0)}
           >
-            <img src={media[0].url} alt={name} loading="eager" />
+            <Image src={media[0].url} alt={name} fill className="gallery-img" unoptimized priority />
           </div>
         ) : (
           <div className="gallery-main-slide">
-            <img src={current?.url} alt={name} loading="eager" />
+            <Image src={current?.url || ""} alt={name} fill className="gallery-img" unoptimized priority />
             <button className="gallery-lightbox-trigger" onClick={() => openLightbox(currentIndex)}>
               <div className="gallery-counter">{`${currentIndex + 1}/${total}`}</div>
             </button>
@@ -91,7 +92,7 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
             onClick={() => setCurrentIndex(index)}
             aria-label={`Photo ${index + 1} of ${total}`}
           >
-            <img src={item.url} alt={`Photo ${index + 1}`} loading="lazy" />
+            <Image src={item.url} alt={`Photo ${index + 1}`} fill className="gallery-thumb-img" unoptimized />
           </button>
         ))}
       </div>
@@ -105,7 +106,7 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
             {current?.type === "video" ? (
               <video key={current.url} src={current.url} muted loop autoPlay controls />
             ) : (
-              <img src={current?.url} alt={name} />
+              <Image src={current?.url || ""} alt={name} fill className="gallery-lightbox-img" unoptimized />
             )}
             {total > 1 && (
               <>
