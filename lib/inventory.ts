@@ -6,6 +6,7 @@ export type ChariotProperty = Omit<MumbaiProperty, "status"> & {
   mediaType?: "image" | "video";
   images?: string[];
   customFields?: Record<string, unknown>;
+  publishedAt?: string;
 };
 
 export type InventoryRead = {
@@ -15,7 +16,7 @@ export type InventoryRead = {
 };
 
 function config() { return { url: (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, ""), key: process.env.SUPABASE_SERVICE_ROLE_KEY || "" }; }
-function mapRow(row: any): ChariotProperty { return { id: row.id, slug: row.slug, name: row.name, category: row.category, locality: row.locality, microMarket: row.micro_market, city: "Mumbai", zone: row.micro_market === "BKC" ? "BKC" : row.locality === "Bandra East" ? "Bandra East" : "Western Suburbs", location: row.location, price: row.price, priceValue: Number(row.price_value || 0), priceUnit: row.price_unit || "total_price", currency: "INR", carpetAreaSqft: Number(row.carpet_area_sqft || 0), configuration: row.configuration || undefined, parking: row.parking || undefined, possession: row.possession || undefined, reraApproved: row.rera_approved ?? undefined, image: row.image_url || undefined, mediaType: row.media_type || "image", images: (row.images as string[] | undefined) || undefined, customFields: row.custom_fields && typeof row.custom_fields === "object" ? row.custom_fields : undefined, status: row.status, description: row.description || undefined, source: row.source || undefined }; }
+function mapRow(row: any): ChariotProperty { return { id: row.id, slug: row.slug, name: row.name, category: row.category, locality: row.locality, microMarket: row.micro_market, city: "Mumbai", zone: row.micro_market === "BKC" ? "BKC" : row.locality === "Bandra East" ? "Bandra East" : "Western Suburbs", location: row.location, price: row.price, priceValue: Number(row.price_value || 0), priceUnit: row.price_unit || "total_price", currency: "INR", carpetAreaSqft: Number(row.carpet_area_sqft || 0), configuration: row.configuration || undefined, parking: row.parking || undefined, possession: row.possession || undefined, reraApproved: row.rera_approved ?? undefined, image: row.image_url || undefined, mediaType: row.media_type || "image", images: (row.images as string[] | undefined) || undefined, customFields: row.custom_fields && typeof row.custom_fields === "object" ? row.custom_fields : undefined, status: row.status, description: row.description || undefined, source: row.source || undefined, publishedAt: row.published_at || row.created_at || undefined }; }
 
 // If the database cannot be read we return nothing at all. The seed data in
 // lib/mumbai.ts used to be served as published inventory here, which put three

@@ -6,7 +6,7 @@ import { CheckIcon, ChevronDownIcon, InstagramIcon, SearchIcon, ShareIcon, Whats
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
 import { PropertyCard } from "@/components/property-card";
 import type { Listing, ListingFilter, Category } from "@/lib/listing";
-import { LISTING_FILTERS, matchesFilter } from "@/lib/listing";
+import { LISTING_FILTERS, matchesFilter, searchListings } from "@/lib/listing";
 import { organizationJsonLd } from "@/lib/seo";
 import { shareToWhatsApp, shareNative } from "@/lib/share";
 
@@ -124,13 +124,10 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   }, [initialListings, retryCount]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return listings.filter((l) => {
-      if (!matchesFilter(l, filter)) return false;
-      if (!q) return true;
-      const hay = [l.name, l.location, l.slug, ...(l.amenities || [])].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
+    // searchListings already covers name, location, area, configuration and
+    // category, so "3 BHK" or a project name typed into the search box matches
+    // the same way the hero placeholder promises.
+    return searchListings(listings.filter((l) => matchesFilter(l, filter)), query);
   }, [listings, filter, query]);
 
   const sortedFiltered = useMemo(() => {
@@ -141,7 +138,9 @@ export function HomeClient({ initialListings }: HomeClientProps) {
       case "price-desc":
         return base.sort((a, b) => b.priceValue - a.priceValue);
       case "newest":
-        return base.sort((a, b) => b.slug.localeCompare(a.slug));
+        // The API already returns newest-first; sort by the published date so
+        // the option is meaningful instead of scrambling the order by slug.
+        return base.sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
       default:
         return base;
     }

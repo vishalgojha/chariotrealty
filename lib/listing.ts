@@ -114,6 +114,7 @@ export type Listing = {
   mediaLinks: ListingMediaLink[];
   specsLine: string;
   tagline?: string;
+  publishedAt?: string;
 };
 
 export function waLink(message: string): string {
@@ -324,6 +325,7 @@ export function toListing(row: ChariotProperty): Listing {
     mediaLinks,
     specsLine,
     tagline,
+    publishedAt: row.publishedAt,
   };
 }
 
