@@ -81,14 +81,18 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
     if (!key || mapsReady || typeof window === "undefined") return;
-    if ((window as any).google?.maps?.places) {
+    if ((window as any).google?.maps?.places?.Autocomplete) {
       setMapsReady(true);
       return;
     }
+    if (document.querySelector('script[data-chariot-google-maps="true"]')) return;
     const script = document.createElement("script");
     script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&loading=async`;
     script.async = true;
-    script.onload = () => setMapsReady(true);
+    script.dataset.chariotGoogleMaps = "true";
+    script.onload = () => {
+      if ((window as any).google?.maps?.places?.Autocomplete) setMapsReady(true);
+    };
     document.head.appendChild(script);
     return () => { /* keep script for session */ };
   }, [mapsReady]);
@@ -96,7 +100,12 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   useEffect(() => {
     if (!mapsReady || !locationInputRef.current) return;
     const input = locationInputRef.current;
-    const autocomplete = new (window as any).google.maps.places.Autocomplete(input, {
+    const Autocomplete = (window as any).google?.maps?.places?.Autocomplete;
+    if (!Autocomplete) {
+      setMapsReady(false);
+      return;
+    }
+    const autocomplete = new Autocomplete(input, {
       componentRestrictions: { country: "in" },
       fields: ["formatted_address", "address_components"],
       types: ["geocode"],
