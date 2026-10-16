@@ -980,7 +980,10 @@ img{max-width:100%;display:block}
 .filter-panel{display:none}
 @media(max-width:768px){
   .sticky-filters-inner{flex-wrap:nowrap;gap:8px;padding:8px 0;align-items:center}
-  .sticky-search{min-width:0;flex:1 1 auto;padding:5px 12px}
+  /* Keep one compact search control available on phones. The desktop row
+     hides this field because the hero already owns search; on mobile the
+     hero controls collapse, so this is the primary way to filter listings. */
+  .sticky-search{display:flex;min-width:0;flex:1 1 auto;padding:5px 12px}
   .sticky-search input{font-size:16px}
   .sticky-chips,.sticky-sort{display:none}
   .sticky-actions{display:flex;gap:6px;flex:0 0 auto}
@@ -1053,7 +1056,11 @@ img{max-width:100%;display:block}
   .enquiry-actions .pill{min-height:48px}
 }
 
+@media(min-width:1440px){
+  .detail-shell{max-width:1600px}
+}
+
 @media(min-width:1024px){
-  .detail-redesign-layout{grid-template-columns:minmax(0,1fr) minmax(340px,.38fr);gap:48px}
+  .detail-redesign-layout{grid-template-columns:minmax(0,1fr) minmax(360px,.34fr);gap:56px}
   .detail-redesign-layout > aside{min-width:0}
 }
