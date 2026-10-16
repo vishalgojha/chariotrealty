@@ -55,17 +55,16 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
         {media.length === 1 ? (
           <div
             className="gallery-main-slide"
-            style={{ backgroundImage: `url('${media[0].url}')` }}
             onClick={() => openLightbox(0)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && openLightbox(0)}
-          />
-        ) : (
-          <div
-            className="gallery-main-slide"
-            style={{ backgroundImage: `url('${current?.url}')` }}
           >
+            <img src={media[0].url} alt={name} loading="eager" />
+          </div>
+        ) : (
+          <div className="gallery-main-slide">
+            <img src={current?.url} alt={name} loading="eager" />
             <button className="gallery-lightbox-trigger" onClick={() => openLightbox(currentIndex)}>
               <div className="gallery-counter">{`${currentIndex + 1}/${total}`}</div>
             </button>
@@ -92,7 +91,7 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
             onClick={() => setCurrentIndex(index)}
             aria-label={`Photo ${index + 1} of ${total}`}
           >
-            <div className="gallery-thumb-image" style={{ backgroundImage: `url('${item.url}')` }} />
+            <img src={item.url} alt={`Photo ${index + 1}`} loading="lazy" />
           </button>
         ))}
       </div>
@@ -106,7 +105,7 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
             {current?.type === "video" ? (
               <video key={current.url} src={current.url} muted loop autoPlay controls />
             ) : (
-              <div className="gallery-lightbox-image" style={{ backgroundImage: `url('${current?.url}')` }} />
+              <img src={current?.url} alt={name} />
             )}
             {total > 1 && (
               <>
