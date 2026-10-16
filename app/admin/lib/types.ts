@@ -52,6 +52,7 @@ export type CmsProperty = {
   micro_market: string;
   location: string;
   price: string;
+  price_unit?: "monthly_rent" | "per_sqft" | "total_price";
   configuration?: string;
   carpet_area_sqft?: number;
   image_url?: string;

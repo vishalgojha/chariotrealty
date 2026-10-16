@@ -171,7 +171,7 @@ export function publicTextList(value: unknown): string[] {
 }
 
 const PUBLIC_LIST_KEYS = ["amenities", "unit_amenities", "building_amenities", "project_details"] as const;
-const PUBLIC_URL_KEYS = ["reel_url", "instagram_reel_url", "instagram_url", "instagram", "drive_url", "drive_photos_url"] as const;
+const PUBLIC_URL_KEYS = ["reel_url", "instagram_reel_url", "instagram_url", "instagram", "for_video", "for_video_url", "video_url", "video", "drive_url", "drive_photos_url"] as const;
 const PUBLIC_TEXT_KEYS = [PUBLIC_DESCRIPTION_KEY] as const;
 
 // Everything the public API is allowed to echo back from custom_fields. Anything
@@ -282,7 +282,7 @@ export function toListing(row: ChariotProperty): Listing {
   const backendAmenities = customList(row, ["amenities", "unit_amenities", "building_amenities"]);
   const amenities = backendAmenities.length ? backendAmenities : [];
   const mediaLinks: ListingMediaLink[] = [];
-  const reelUrl = customUrl(row, ["reel_url", "instagram_reel_url", "instagram"]);
+  const reelUrl = customUrl(row, ["reel_url", "instagram_reel_url", "instagram", "for_video", "for_video_url", "video_url", "video"]);
   const imageUrl = row.image || "";
   const imageReelUrl = imageUrl.includes("instagram.com") ? imageUrl : undefined;
   const driveUrl = customUrl(row, ["drive_url", "drive_photos_url", "photos_url"]);

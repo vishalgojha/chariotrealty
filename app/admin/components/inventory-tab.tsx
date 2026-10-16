@@ -25,6 +25,7 @@ const EMPTY_FORM = {
   locality: "Bandra West",
   location: "",
   price: "",
+  price_unit: "total_price" as "monthly_rent" | "per_sqft" | "total_price",
   configuration: "",
   carpet_area_sqft: "",
   image_url: "",
@@ -264,6 +265,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       locality: property.locality,
       location: property.location,
       price: property.price,
+      price_unit: property.price_unit || "total_price",
       configuration: property.configuration || "",
       carpet_area_sqft: property.carpet_area_sqft ? String(property.carpet_area_sqft) : "",
       image_url: property.image_url || "",
@@ -494,10 +496,18 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
               <option value="under-construction">Under construction</option>
             </select>
           </label>
-          <label className="field">
+          <div className="field">
             <span>Price</span>
-            <input className="input" placeholder="e.g. ₹2.80L / mo" value={form.price} onChange={(e) => patch({ price: e.target.value })} required />
-          </label>
+            <div className="price-input-row">
+              <input className="input" placeholder={form.price_unit === "monthly_rent" ? "e.g. 2.80 L" : "e.g. 4.25 Cr"} value={form.price} onChange={(e) => patch({ price: e.target.value })} required />
+              <select className="select price-unit" aria-label="Price type" value={form.price_unit} onChange={(e) => patch({ price_unit: e.target.value as typeof form.price_unit })}>
+                <option value="total_price">Sale price</option>
+                <option value="monthly_rent">Monthly rent</option>
+                <option value="per_sqft">Per sqft</option>
+              </select>
+            </div>
+            <small className="field-hint">The website adds “/ mo” automatically for monthly rent.</small>
+          </div>
           <label className="field">
             <span>Configuration</span>
             <input className="input" placeholder="e.g. 3 BHK" value={form.configuration} onChange={(e) => patch({ configuration: e.target.value })} />
@@ -548,6 +558,17 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
               <small className="field-hint">Reads the notes below, or the fields above when the notes are empty. Names and numbers are stripped automatically.</small>
             </div>
           </div>
+          <label className="field">
+            <span>Instagram video / Reel URL</span>
+            <input
+              className="input"
+              type="url"
+              placeholder="https://www.instagram.com/reel/..."
+              value={String(customValues.for_video ?? customValues.for_video_url ?? customValues.instagram_reel_url ?? "")}
+              onChange={(e) => setCustomValues((values) => ({ ...values, for_video: e.target.value }))}
+            />
+            <small className="field-hint">Shown publicly as “Watch video” on this listing.</small>
+          </label>
           <div className="field description-builder">
             <span>Notes for the generator — not published</span>
             <textarea
@@ -558,7 +579,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-          {fields.map((field) => (
+          {fields.filter((field) => !["for_video", "for_video_url", "instagram_reel_url", "instagram_url"].includes(field.field_key)).map((field) => (
             <label className="field" key={field.id}>
               <span>{field.label}</span>
               {field.field_type === "textarea" ? (
