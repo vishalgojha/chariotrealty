@@ -396,7 +396,10 @@ export function matchesFilter(listing: Listing, filter: ListingFilter): boolean 
   if (filter === "commercial") return listing.category === "commercial";
   if (filter === "under-construction") return listing.category === "under-construction";
   if (filter === "rent") return isRentalListing(listing);
-  return !isRentalListing(listing) && listing.category !== "commercial";
+  // "For Sale" means ready residential inventory only. New developments have
+  // their own filter and should not leak into sale results just because their
+  // stored category is not commercial.
+  return listing.category === "residential" && !isRentalListing(listing);
 }
 
 export function searchListings(listings: Listing[], query: string): Listing[] {

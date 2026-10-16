@@ -446,30 +446,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
         </section>
         )}
 
-        <section className="section-block">
-          <div className="shell">
-            <div className="section-head">
-              <div>
-                <p className="kicker">About Chariot Realty</p>
-                <h2>About the agency</h2>
-              </div>
-            </div>
-            <div className="about-grid">
-              <div className="about-text">
-                <AboutUs />
-              </div>
-              <div className="about-points">
-                <div className="panel clean">
-                  <ul className="checklist">
-                    <li><strong>Direct mandates</strong> — verified inventory with full disclosure</li>
-                    <li><strong>WhatsApp-first</strong> — quick responses for buyers &amp; tenants</li>
-                    <li><strong>Bandra &amp; BKC focus</strong> — hyperlocal expertise</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        <AboutUs />
 
         <section className="section-block section-alt">
           <div className="shell">
