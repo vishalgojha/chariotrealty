@@ -7,6 +7,7 @@ import { EmptyPanel, Note, Panel, PanelHead, Pill } from "./ui";
 import type { Notify } from "./whatsapp-tab";
 
 const PAGE_SIZE = 50;
+const OWNER_PHONE_DIGITS = "919773757759";
 
 type RawMessage = {
   id: number;
@@ -28,6 +29,11 @@ function previewOf(message: RawMessage): string {
   const text = String(message.message || "");
   if (text) return text.length > 160 ? `${text.slice(0, 160)}…` : text;
   return message.message_type && message.message_type !== "text" ? `[${message.message_type}]` : "—";
+}
+
+function isOwnerMessage(message: RawMessage): boolean {
+  const phone = String(message.sender_phone || "").replace(/\D/g, "");
+  return phone === OWNER_PHONE_DIGITS || phone.endsWith(OWNER_PHONE_DIGITS);
 }
 
 export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) {
@@ -112,6 +118,40 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
       return true;
     });
   }, [messages]);
+  const ownMessages = useMemo(() => visibleMessages.filter(isOwnerMessage), [visibleMessages]);
+  const incomingMessages = useMemo(() => visibleMessages.filter((message) => !isOwnerMessage(message)), [visibleMessages]);
+
+  function renderMessageTable(rows: RawMessage[]) {
+    return (
+      <div className="table-wrap">
+        <table className="tbl">
+          <thead><tr><th>Date</th><th>Sender</th><th>Chat</th><th>Message</th><th>Extraction</th><th>Actions</th></tr></thead>
+          <tbody>
+            {rows.map((message) => {
+              const extractions = extractedMap[String(message.id)] || [];
+              const label = extractions.length
+                ? extractions.map((item) => `${item.table}: ${item.status || "draft"}`).join(", ")
+                : "Not extracted";
+              return (
+                <tr key={message.id}>
+                  <td className="wa-when">{new Date(message.message_timestamp).toLocaleString()}</td>
+                  <td><span className="tbl-name">{message.sender || "—"}</span>{message.sender_phone && <span className="tbl-sub">{message.sender_phone}</span>}</td>
+                  <td className="wa-chat">{message.is_group ? message.group_name : <span className="tbl-sub">Direct</span>}</td>
+                  <td className="wa-preview">{previewOf(message)}</td>
+                  <td><Pill tone={extractions.length ? "live" : "neutral"}>{label}</Pill></td>
+                  <td className="wa-actions-cell">
+                    <button type="button" className="btn btn-light btn-sm" onClick={() => setViewing(message)}>View</button>
+                    <button type="button" className="btn btn-dark btn-sm" disabled={Boolean(extractions.length) || extracting === message.id} onClick={() => handleExtract(message.id)}>{extracting === message.id ? "Extracting…" : extractions.length ? "Viewed" : "Extract"}</button>
+                    <button type="button" className="btn btn-light btn-sm" onClick={() => navigator.clipboard.writeText(String(message.id))}>Copy id</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   return (
     <div className="tab-stack">
@@ -156,7 +196,11 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
           {visibleMessages.length < messages.length && (
             <p className="table-note">Collapsed {messages.length - visibleMessages.length} duplicate message block{messages.length - visibleMessages.length === 1 ? "" : "s"} from this page.</p>
           )}
-          <div className="table-wrap">
+          <div className="message-sections">
+          {incomingMessages.length > 0 && <section className="message-section"><div className="message-section-head"><h3>Incoming messages</h3><Pill tone="neutral">{incomingMessages.length}</Pill></div>{renderMessageTable(incomingMessages)}</section>}
+          {ownMessages.length > 0 && <section className="message-section own-message-section"><div className="message-section-head"><h3>Kapil’s sent messages</h3><Pill tone="live">{ownMessages.length}</Pill></div>{renderMessageTable(ownMessages)}</section>}
+          </div>
+          {/*
             <table className="tbl">
               <thead>
                 <tr>
@@ -221,7 +265,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
                 })}
               </tbody>
             </table>
-          </div>
+          </div>*/}
           </>
         )}
 

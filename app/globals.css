@@ -265,6 +265,11 @@ img{max-width:100%;display:block}
 /* Table */
 .table-wrap{overflow-x:auto}
 .table-note{margin:0 0 10px;color:var(--slate);font-size:12px}
+.message-section{margin-top:18px}
+.message-section:first-child{margin-top:0}
+.message-section-head{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.message-section-head h3{margin:0;font-size:16px;color:var(--ink)}
+.own-message-section{border-top:1px solid var(--border);padding-top:18px}
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
 .tbl th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--slate);text-align:left;font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--bg-subtle);white-space:nowrap}
 .tbl td{padding:13px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
