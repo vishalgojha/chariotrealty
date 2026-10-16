@@ -58,20 +58,28 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   const [mapsReady, setMapsReady] = useState(false);
 
   const loadAll = useCallback(async () => {
-    const [inventoryResponse, fieldsResponse, draftsResponse] = await Promise.all([
-      api.get("/api/inventory?admin=1"),
-      api.get("/api/inventory/fields"),
-      api.get("/api/inventory/drafts"),
-    ]);
-    const payload = await readJson(inventoryResponse);
-    const fieldsPayload = await readJson(fieldsResponse);
-    const draftsPayload = await readJson(draftsResponse);
-    if (!inventoryResponse.ok) setError(payload.error || "Could not load CMS inventory");
-    setProperties(payload.data || []);
-    setFields(fieldsPayload.data || []);
-    const groups = (draftsPayload.data || []) as Array<{ table: string; drafts: TypedDraft[] }>;
-    setTypedDrafts(groups.flatMap((group) => group.drafts || []));
-    setLoaded(true);
+    try {
+      const [inventoryResponse, fieldsResponse, draftsResponse] = await Promise.all([
+        api.get("/api/inventory?admin=1"),
+        api.get("/api/inventory/fields"),
+        api.get("/api/inventory/drafts"),
+      ]);
+      const payload = await readJson(inventoryResponse) as { data?: unknown; error?: string };
+      const fieldsPayload = await readJson(fieldsResponse) as { data?: unknown };
+      const draftsPayload = await readJson(draftsResponse) as { data?: unknown };
+      if (!inventoryResponse.ok) setError(payload.error || "Could not load CMS inventory");
+      setProperties(Array.isArray(payload.data) ? payload.data as CmsProperty[] : []);
+      setFields(Array.isArray(fieldsPayload.data) ? fieldsPayload.data as CmsField[] : []);
+      const groups = Array.isArray(draftsPayload.data) ? draftsPayload.data as Array<{ table: string; drafts?: TypedDraft[] }> : [];
+      setTypedDrafts(groups.flatMap((group) => Array.isArray(group.drafts) ? group.drafts : []));
+    } catch (error) {
+      setProperties([]);
+      setFields([]);
+      setTypedDrafts([]);
+      setError(error instanceof Error ? error.message : "Could not load CMS inventory");
+    } finally {
+      setLoaded(true);
+    }
   }, [api]);
 
   useEffect(() => {
