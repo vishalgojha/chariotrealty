@@ -38,6 +38,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const [sort, setSort] = useState<"relevant" | "price-asc" | "price-desc" | "newest">("relevant");
   const [panel, setPanel] = useState<null | "filters" | "sort">(null);
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Relevant";
+  const filterLabel = LISTING_FILTERS.find((f) => f.value === filter)?.label ?? "All listings";
 
   const updateParams = (next: Partial<{ q: string; filter: ListingFilter; sort?: string }>) => {
     if (typeof window === "undefined") return;
@@ -306,7 +307,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                 onClick={() => setPanel((p) => (p === "filters" ? null : "filters"))}
               >
                 <FilterIcon size={14} />
-                Filters
+                {filter === "all" ? "Filters" : filterLabel}
               </button>
               <button
                 type="button"
