@@ -382,6 +382,13 @@ img{max-width:100%;display:block}
 .wa-preview{width:clamp(320px,34vw,520px);max-width:520px;min-width:320px;white-space:pre-wrap;word-break:break-word;line-height:1.4;vertical-align:top;max-height:190px;overflow:auto}
 .wa-actions-cell{white-space:nowrap}
 .wa-actions-cell .btn+.btn{margin-left:6px}
+.raw-message-overlay{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:24px;background:rgba(9,26,51,.55);backdrop-filter:blur(5px)}
+.raw-message-modal{width:min(900px,100%);max-height:min(760px,90vh);overflow:auto;background:var(--bg-surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--sh-3);padding:24px}
+.raw-message-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:18px}
+.raw-message-modal-head h3{font-family:var(--display);font-size:24px;color:var(--ink);margin:4px 0 2px}
+.raw-message-modal-head p{margin:0;color:var(--slate);font-size:12px}
+.raw-message-content{margin:0;white-space:pre-wrap;word-break:break-word;font:13px/1.6 var(--sans);color:var(--charcoal)}
+@media(max-width:640px){.raw-message-overlay{padding:12px}.raw-message-modal{padding:18px}.raw-message-modal-head h3{font-size:20px}}
 .wa-pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:18px;color:var(--slate);font-size:12.5px}
 
 /* Agent */

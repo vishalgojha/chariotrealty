@@ -40,6 +40,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   const [status, setStatus] = useState<StatusFilter>("");
   const [page, setPage] = useState(1);
   const [extracting, setExtracting] = useState(0);
+  const [viewing, setViewing] = useState<RawMessage | null>(null);
 
   const load = useCallback(
     async (nextPage: number, nextQuery: string, nextStatus: StatusFilter) => {
@@ -175,6 +176,13 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
                       <td className="wa-actions-cell">
                         <button
                           type="button"
+                          className="btn btn-light btn-sm"
+                          onClick={() => setViewing(message)}
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
                           className="btn btn-dark btn-sm"
                           disabled={Boolean(extractions.length) || extracting === message.id}
                           onClick={() => handleExtract(message.id)}
@@ -215,6 +223,22 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
             >
               Next →
             </button>
+          </div>
+        )}
+
+        {viewing && (
+          <div className="raw-message-overlay" role="dialog" aria-modal="true" aria-label="Raw WhatsApp message">
+            <div className="raw-message-modal">
+              <div className="raw-message-modal-head">
+                <div>
+                  <span className="admin-eyebrow">Raw message</span>
+                  <h3>{viewing.sender || "Unknown sender"}</h3>
+                  <p>{viewing.group_name || (viewing.is_group ? "Group message" : "Direct message")} · {new Date(viewing.message_timestamp).toLocaleString()}</p>
+                </div>
+                <button type="button" className="btn btn-light btn-sm" onClick={() => setViewing(null)}>Close</button>
+              </div>
+              <pre className="raw-message-content">{viewing.message || `[${viewing.message_type || "message"}]`}</pre>
+            </div>
           </div>
         )}
       </Panel>
