@@ -258,18 +258,6 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                 </button>
               </form>
             </div>
-            <div className="hero-filters">
-              {LISTING_FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  className={`pill ${filter === f.value ? "pill-dark" : "pill-ghost"} pill-sm`}
-                  onClick={() => setFilterWithUrl(f.value)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
           </div>
         </section>
 

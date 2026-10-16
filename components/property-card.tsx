@@ -1,4 +1,4 @@
-import { CheckIcon } from "./icons";
+import { CheckIcon, InstagramIcon } from "./icons";
 import Image from "next/image";
 import type { Listing } from "@/lib/listing";
 
@@ -35,6 +35,17 @@ export function PropertyCard({ listing, onSelect, selected }: { listing: Listing
           )}
         </div>
       </a>
+      {listing.mediaLinks[0]?.href ? (
+        <a
+          className="property-card-media-link"
+          href={listing.mediaLinks[0].href}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Watch Instagram video"
+        >
+          <InstagramIcon size={13} /> Watch video
+        </a>
+      ) : null}
     </article>
   );
 }

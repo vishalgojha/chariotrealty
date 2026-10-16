@@ -171,7 +171,7 @@ export function publicTextList(value: unknown): string[] {
 }
 
 const PUBLIC_LIST_KEYS = ["amenities", "unit_amenities", "building_amenities", "project_details"] as const;
-const PUBLIC_URL_KEYS = ["reel_url", "instagram_reel_url", "drive_url", "drive_photos_url"] as const;
+const PUBLIC_URL_KEYS = ["reel_url", "instagram_reel_url", "instagram_url", "instagram", "drive_url", "drive_photos_url"] as const;
 const PUBLIC_TEXT_KEYS = [PUBLIC_DESCRIPTION_KEY] as const;
 
 // Everything the public API is allowed to echo back from custom_fields. Anything
