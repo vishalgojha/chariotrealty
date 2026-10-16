@@ -402,10 +402,11 @@ export function matchesFilter(listing: Listing, filter: ListingFilter): boolean 
 export function searchListings(listings: Listing[], query: string): Listing[] {
   const term = query.trim().toLowerCase();
   if (!term) return listings;
-  return listings.filter((listing) =>
-    [listing.name, listing.location, listing.area, listing.summary, listing.configuration ?? "", CATEGORY_LABEL[listing.category]]
+  const tokens = term.split(/\s+/).filter(Boolean);
+  return listings.filter((listing) => {
+    const haystack = [listing.name, listing.location, listing.area, listing.summary, listing.configuration ?? "", CATEGORY_LABEL[listing.category]]
       .join(" ")
-      .toLowerCase()
-      .includes(term),
-  );
+      .toLowerCase();
+    return tokens.every((token) => haystack.includes(token));
+  });
 }
