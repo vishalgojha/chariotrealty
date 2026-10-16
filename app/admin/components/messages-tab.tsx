@@ -26,7 +26,7 @@ type StatusFilter = "" | "none" | "extracted";
 
 function previewOf(message: RawMessage): string {
   const text = String(message.message || "");
-  if (text) return text;
+  if (text) return text.length > 160 ? `${text.slice(0, 160)}…` : text;
   return message.message_type && message.message_type !== "text" ? `[${message.message_type}]` : "—";
 }
 
@@ -101,6 +101,17 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   }
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+  const visibleMessages = useMemo(() => {
+    const seen = new Set<string>();
+    return messages.filter((message) => {
+      const text = String(message.message || "").trim().replace(/\s+/g, " ");
+      if (!text) return true;
+      const signature = `${message.sender_phone || message.sender}|${message.group_name}|${text}`;
+      if (seen.has(signature)) return false;
+      seen.add(signature);
+      return true;
+    });
+  }, [messages]);
 
   return (
     <div className="tab-stack">
@@ -141,6 +152,10 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
             Nothing matched this filter. Clear it to see the full capture.
           </EmptyPanel>
         ) : (
+          <>
+          {visibleMessages.length < messages.length && (
+            <p className="table-note">Collapsed {messages.length - visibleMessages.length} duplicate message block{messages.length - visibleMessages.length === 1 ? "" : "s"} from this page.</p>
+          )}
           <div className="table-wrap">
             <table className="tbl">
               <thead>
@@ -154,7 +169,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
                 </tr>
               </thead>
               <tbody>
-                {messages.map((message) => {
+                {visibleMessages.map((message) => {
                   const extractions = extractedMap[String(message.id)] || [];
                   const label = extractions.length
                     ? extractions.map((item) => `${item.table}: ${item.status || "draft"}`).join(", ")
@@ -207,6 +222,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {totalPages > 1 && (
