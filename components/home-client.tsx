@@ -37,6 +37,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"relevant" | "price-asc" | "price-desc" | "newest">("relevant");
   const [panel, setPanel] = useState<null | "filters" | "sort">(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const sortLabel = SORTS.find((s) => s.value === sort)?.label ?? "Relevant";
   const filterLabel = LISTING_FILTERS.find((f) => f.value === filter)?.label ?? "All listings";
 
@@ -165,6 +166,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
     () => sortedFiltered.filter((listing) => listing.category === "under-construction").slice(0, 12),
     [sortedFiltered],
   );
+  const featuredListing = displayListings[0];
 
   const toggleSelect = (slug: string) => {
     setSelectedSlugs((prev) => {
@@ -221,7 +223,24 @@ export function HomeClient({ initialListings }: HomeClientProps) {
               <WhatsAppIcon size={15} /> WhatsApp
             </a>
           </div>
+          <button
+            type="button"
+            className="mobile-menu-button"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            <span /><span /><span />
+          </button>
         </div>
+        {mobileMenuOpen && (
+          <nav className="mobile-menu" aria-label="Mobile navigation">
+            <a href="#opportunities" onClick={() => setMobileMenuOpen(false)}>Curated inventory</a>
+            <a href="#under-construction" onClick={() => setMobileMenuOpen(false)}>New developments</a>
+            <a href="/neighborhoods" onClick={() => setMobileMenuOpen(false)}>Neighborhoods</a>
+            <a href="/about" onClick={() => setMobileMenuOpen(false)}>About Chariot</a>
+          </nav>
+        )}
       </header>
 
       <main>
@@ -261,6 +280,28 @@ export function HomeClient({ initialListings }: HomeClientProps) {
             </div>
           </div>
         </section>
+
+        {featuredListing && (
+          <section className="featured-project-section" aria-labelledby="featured-project-title">
+            <div className="shell">
+              <p className="kicker">Featured project</p>
+              <a className="featured-project" href={`/properties/${featuredListing.slug}`}>
+                <div className="featured-project-media">
+                  {featuredListing.media[0]?.url && <img src={featuredListing.media[0].url} alt={featuredListing.name} />}
+                  <span className="featured-project-badge">Verified</span>
+                </div>
+                <div className="featured-project-body">
+                  <div>
+                    <h2 id="featured-project-title">{featuredListing.name}</h2>
+                    <p>{featuredListing.location}</p>
+                    <strong>{featuredListing.price}{featuredListing.priceNote ? ` ${featuredListing.priceNote}` : ""}</strong>
+                  </div>
+                  <span className="featured-project-arrow" aria-hidden="true">↗</span>
+                </div>
+              </a>
+            </div>
+          </section>
+        )}
 
         <div className="sticky-filters">
           <div className="shell sticky-filters-inner">
@@ -516,6 +557,9 @@ export function HomeClient({ initialListings }: HomeClientProps) {
       <div className="bottom-bar bottom-bar-mobile">
         <a className="pill pill-dark" href={waa("Hi Kapil, I'd like to discuss a Mumbai property opportunity.")} target="_blank" rel="noreferrer">
           <WhatsAppIcon size={16} /> WhatsApp
+        </a>
+        <a className="pill pill-outline" href={INSTAGRAM} target="_blank" rel="noreferrer">
+          <InstagramIcon size={16} /> Instagram
         </a>
         <a className="pill pill-outline" href="tel:+919773757759">
           <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
