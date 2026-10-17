@@ -1017,7 +1017,14 @@ img{max-width:100%;display:block}
 @media(max-width:768px){
   .hero{min-height:0}
   .hero-bg{opacity:.12}
-  .hero-inner{padding:24px 16px 26px;gap:18px}
+  .hero-inner{display:flex;flex-direction:column;padding:24px 16px 26px;gap:12px}
+  /* On phones, let the CTA group participate in the hero flow so the
+     search field can sit between the intro copy and the actions. */
+  .hero-content{display:contents}
+  .hero-title{order:1}
+  .hero-sub{order:2}
+  .hero-search{order:3}
+  .hero-ctas{order:4;width:100%;margin-top:4px}
   .hero-title{font-size:clamp(34px,8.5vw,42px);line-height:1.06;letter-spacing:-.02em;margin-bottom:10px}
   .hero-sub{font-size:14px;line-height:1.45;margin-bottom:14px;max-width:34rem}
   .hero-ctas{gap:8px}
