@@ -19,15 +19,68 @@ type RawMessage = {
   message_type: string;
   is_group: boolean;
   message_timestamp: string;
+  raw_payload?: unknown;
+  attachments?: unknown;
 };
 
 type Extraction = { id: number; table: string; status: string };
 
 type StatusFilter = "" | "none" | "extracted";
 
+function textFromPayload(value: unknown, depth = 0, allowString = false): string {
+  if (depth > 6 || value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        return textFromPayload(JSON.parse(trimmed), depth + 1);
+      } catch {
+        // It is ordinary message text, not JSON.
+      }
+    }
+    return allowString ? trimmed : "";
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => textFromPayload(item, depth + 1)).find(Boolean) || "";
+  }
+  if (typeof value !== "object") return "";
+
+  const record = value as Record<string, unknown>;
+  // Prefer fields that WhatsApp commonly uses for text and media captions.
+  for (const key of ["conversation", "text", "message", "caption", "body", "content", "description"]) {
+    const text = textFromPayload(record[key], depth + 1, true);
+    if (text) return text;
+  }
+  for (const child of Object.values(record)) {
+    const text = textFromPayload(child, depth + 1);
+    if (text) return text;
+  }
+  return "";
+}
+
+function messageText(message: RawMessage): string {
+  const normalized = String(message.message || "").trim();
+  if (normalized) return normalized;
+  return textFromPayload(message.raw_payload);
+}
+
+function messageFallback(message: RawMessage): string {
+  const text = messageText(message);
+  if (text) return text;
+  if (message.raw_payload && typeof message.raw_payload === "object" && Object.keys(message.raw_payload).length) {
+    return JSON.stringify(message.raw_payload, null, 2);
+  }
+  if (Array.isArray(message.attachments) && message.attachments.length) {
+    return JSON.stringify(message.attachments, null, 2);
+  }
+  return `[${message.message_type || "message"}]`;
+}
+
 function previewOf(message: RawMessage): string {
-  const text = String(message.message || "");
+  const text = messageText(message);
   if (text) return text.length > 160 ? `${text.slice(0, 160)}…` : text;
+  if (Array.isArray(message.attachments) && message.attachments.length) return `[${message.message_type || "media"}]`;
   return message.message_type && message.message_type !== "text" ? `[${message.message_type}]` : "—";
 }
 
@@ -110,7 +163,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   const visibleMessages = useMemo(() => {
     const seen = new Set<string>();
     return messages.filter((message) => {
-      const text = String(message.message || "").trim().replace(/\s+/g, " ");
+      const text = messageText(message).replace(/\s+/g, " ");
       if (!text) return true;
       const signature = `${message.sender_phone || message.sender}|${message.group_name}|${text}`;
       if (seen.has(signature)) return false;
@@ -297,7 +350,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
                 </div>
                 <button type="button" className="btn btn-light btn-sm" onClick={() => setViewing(null)}>Close</button>
               </div>
-              <pre className="raw-message-content">{viewing.message || `[${viewing.message_type || "message"}]`}</pre>
+              <pre className="raw-message-content">{messageFallback(viewing)}</pre>
             </div>
           </div>
         )}
