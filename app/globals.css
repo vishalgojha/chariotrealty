@@ -718,6 +718,12 @@ img{max-width:100%;display:block}
   --white: #ffffff;
 }
 
+.topbar{background:var(--navy);border-bottom-color:rgba(255,255,255,.12)}
+.topbar .brand-name{color:#fff}
+.topbar .brand-sub{color:#b9c6db}
+.topbar .topnav{color:#d9e1ef}
+.topbar .topnav a:hover{color:var(--gold)}
+.topbar .pill-dark{background:#fff;color:var(--navy)}
 .topbar-actions{display:flex;align-items:center;gap:10px}
 .mobile-menu-button,.mobile-menu{display:none}
 .topbar-call{display:none}
@@ -725,7 +731,7 @@ img{max-width:100%;display:block}
   .topbar-call{display:inline-flex}
 }
 
-.hero{position:relative;min-height:320px;display:flex;align-items:center;background:linear-gradient(120deg, rgba(15,27,61,0.92) 0%, rgba(15,27,61,0.85) 50%, rgba(15,27,61,0.78) 100%);overflow:hidden}
+.hero{position:relative;min-height:320px;display:flex;align-items:center;background:linear-gradient(135deg,#081a3c 0%,#122b5d 55%,#1b376e 100%);overflow:hidden}
 .hero-bg{position:absolute;inset:0;background-image:url('https://images.unsplash.com/photo-1505691723518-36a5ac3be353?q=80&w=1600&auto=format&fit=crop');background-size:cover;background-position:center;opacity:0.18}
 .hero-inner{position:relative;z-index:2;padding:32px 16px 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:28px;align-items:center}
 .hero-content{color:#fff;min-width:0}
@@ -746,12 +752,13 @@ img{max-width:100%;display:block}
 .featured-project-body p{margin:0 0 18px;color:#b9c6db;font-size:14px}
 .featured-project-body strong{font-family:var(--display);font-size:22px;color:#fff}
 .featured-project-arrow{display:grid;place-items:center;flex:0 0 52px;width:52px;height:52px;border-radius:50%;background:var(--gold);color:var(--navy);font-size:28px;line-height:1}
+.search-action{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border-radius:var(--r-pill);font-weight:700;font-size:14px;padding:12px 22px;border:1px solid transparent;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
 .btn:active{transform:scale(.98)}
 .btn-primary{background:var(--gold);color:var(--navy)}
 .btn-primary:hover{background:#e8ae28;box-shadow:var(--sh-3)}
-.btn-secondary{background:rgba(255,255,255,0.98);color:var(--navy);border-color:rgba(15,27,61,0.18)}
+.btn-secondary{background:transparent;color:#fff;border-color:rgba(255,255,255,.55)}
 .btn-secondary:hover{box-shadow:var(--sh-2)}
 
 .shell{max-width:1180px;margin:0 auto;padding:0 20px}
@@ -778,6 +785,11 @@ img{max-width:100%;display:block}
 
 .bottom-bar-mobile{display:flex}
 @media(min-width:1024px){.bottom-bar-mobile{display:none}}
+.bottom-bar-mobile{background:var(--navy);border-top-color:rgba(255,255,255,.16)}
+.bottom-bar-mobile .pill{border:0;color:#fff}
+.bottom-bar-mobile .pill:first-child{background:#20bf6b}
+.bottom-bar-mobile .pill:nth-child(2){background:linear-gradient(120deg,#f9ce34 0%,#ee2a7b 50%,#6228d7 100%)}
+.bottom-bar-mobile .pill:nth-child(3){background:transparent;border:1px solid rgba(255,255,255,.55);color:#fff}
 .footer-inner{padding:32px 20px 80px;display:flex;flex-direction:column;gap:12px}
 @media(min-width:1024px){.footer-inner{padding:40px 20px 40px;align-items:center;justify-content:space-between;flex-direction:row}}
 
@@ -984,7 +996,7 @@ img{max-width:100%;display:block}
 .property-card-title{font-size:18px;font-weight:700;color:var(--navy);margin:0 0 4px;line-height:1.18}
 .property-card-arrow{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;margin-top:-2px;border-radius:50%;background:var(--gold);color:var(--navy);font-size:19px;line-height:1}
 .property-card-location{font-size:12px;color:var(--grey);margin:0 0 12px}
-.property-card-price-chip{display:inline-flex;align-items:center;min-height:30px;padding:5px 10px;border-radius:999px;background:var(--cream-2);color:var(--navy);font-family:var(--display);font-size:17px;font-weight:700;margin-bottom:10px}
+.property-card-price-chip{display:inline-flex;align-items:center;min-height:30px;padding:5px 11px;border-radius:999px;background:var(--gold);color:var(--navy);font-family:var(--display);font-size:17px;font-weight:700;margin-bottom:10px}
 .property-card-specs{font-size:12px;color:var(--grey);margin-bottom:9px}
 .property-card-amenities{display:flex;gap:6px;flex-wrap:wrap}
 .property-card-amenities span{font-size:11px;background:var(--cream);border:1px solid var(--line);padding:4px 8px;border-radius:999px;color:var(--charcoal)}

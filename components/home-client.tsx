@@ -273,8 +273,9 @@ export function HomeClient({ initialListings }: HomeClientProps) {
                   value={query}
                   onChange={(e) => setQueryWithUrl(e.target.value)}
                 />
-                <button type="submit" className="pill pill-gold pill-sm">
-                  Search
+                <button type="submit" className="pill pill-gold pill-sm search-action">
+                  <SearchIcon size={16} />
+                  <span className="search-action-label">Search</span>
                 </button>
               </form>
             </div>
