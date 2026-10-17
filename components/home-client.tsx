@@ -166,7 +166,6 @@ export function HomeClient({ initialListings }: HomeClientProps) {
     () => sortedFiltered.filter((listing) => listing.category === "under-construction").slice(0, 12),
     [sortedFiltered],
   );
-  const featuredListing = displayListings[0];
 
   const toggleSelect = (slug: string) => {
     setSelectedSlugs((prev) => {
@@ -281,28 +280,6 @@ export function HomeClient({ initialListings }: HomeClientProps) {
             </div>
           </div>
         </section>
-
-        {featuredListing && (
-          <section className="featured-project-section" aria-labelledby="featured-project-title">
-            <div className="shell">
-              <p className="kicker">Featured project</p>
-              <a className="featured-project" href={`/properties/${featuredListing.slug}`}>
-                <div className="featured-project-media">
-                  {featuredListing.media[0]?.url && <img src={featuredListing.media[0].url} alt={featuredListing.name} />}
-                  <span className="featured-project-badge">Verified</span>
-                </div>
-                <div className="featured-project-body">
-                  <div>
-                    <h2 id="featured-project-title">{featuredListing.name}</h2>
-                    <p>{featuredListing.location}</p>
-                    <strong>{featuredListing.price}{featuredListing.priceNote ? ` ${featuredListing.priceNote}` : ""}</strong>
-                  </div>
-                  <span className="featured-project-arrow" aria-hidden="true">↗</span>
-                </div>
-              </a>
-            </div>
-          </section>
-        )}
 
         <div className="sticky-filters">
           <div className="shell sticky-filters-inner">
