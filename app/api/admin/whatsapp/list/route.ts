@@ -52,7 +52,13 @@ export async function GET(request: NextRequest) {
   list.set("offset", String(offset));
   if (query) {
     const needle = query.replace(/[%,()]/g, "");
-    list.set("or", `(message.ilike.*${needle}*,sender.ilike.*${needle}*,group_name.ilike.*${needle}*)`);
+    // Some ingested messages keep their text in raw_payload while the
+    // normalized message column is empty. Search both representations so
+    // the admin filter behaves consistently for text and media captions.
+    list.set(
+      "or",
+      `(message.ilike.*${needle}*,sender.ilike.*${needle}*,group_name.ilike.*${needle}*,raw_payload->>conversation.ilike.*${needle}*,raw_payload->>text.ilike.*${needle}*,raw_payload->>caption.ilike.*${needle}*,raw_payload->>body.ilike.*${needle}*)`,
+    );
   }
 
   let messages: Record<string, any>[] = [];
