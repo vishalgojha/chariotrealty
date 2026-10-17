@@ -391,8 +391,8 @@ img{max-width:100%;display:block}
 .wa-preview{width:clamp(320px,34vw,520px);max-width:520px;min-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wa-actions-cell{white-space:nowrap}
 .wa-actions-cell .btn+.btn{margin-left:6px}
-.raw-message-overlay{position:fixed;inset:0;z-index:80;display:flex;justify-content:flex-end;background:rgba(9,26,51,.42);backdrop-filter:blur(5px)}
-.raw-message-modal{width:min(620px,100%);height:100%;max-height:none;overflow:auto;background:var(--bg-surface);border:1px solid var(--border);border-right:0;border-radius:18px 0 0 18px;box-shadow:var(--sh-3);padding:24px;animation:raw-drawer-in .2s ease-out}
+.raw-message-overlay{position:fixed;inset:0;z-index:80;display:flex;justify-content:flex-end;overflow:hidden;overscroll-behavior:contain;touch-action:none;background:rgba(9,26,51,.42);backdrop-filter:blur(5px)}
+.raw-message-modal{width:min(620px,100%);height:100dvh;max-height:100dvh;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background:var(--bg-surface);border:1px solid var(--border);border-right:0;border-radius:18px 0 0 18px;box-shadow:var(--sh-3);padding:24px;animation:raw-drawer-in .2s ease-out}
 @keyframes raw-drawer-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
 .raw-message-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:18px}
 .raw-message-modal-head h3{font-family:var(--display);font-size:24px;color:var(--ink);margin:4px 0 2px}

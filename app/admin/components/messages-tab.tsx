@@ -101,6 +101,15 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   const [extracting, setExtracting] = useState(0);
   const [viewing, setViewing] = useState<RawMessage | null>(null);
 
+  useEffect(() => {
+    if (!viewing) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [viewing]);
+
   const load = useCallback(
     async (nextPage: number, nextQuery: string, nextStatus: StatusFilter) => {
       setLoading(true);
