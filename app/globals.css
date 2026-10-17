@@ -976,6 +976,7 @@ img{max-width:100%;display:block}
 .property-card-media-link{display:inline-flex;align-items:center;gap:5px;margin:0 14px 14px;color:#a52d70;font-size:12px;font-weight:700}
 .property-card-media-link:hover{text-decoration:underline;color:#7f1851}
 .property-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+@media(min-width:1280px){.listing-section>.shell{max-width:1320px}.listing-section .property-grid{gap:20px}}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 16px;border:1px dashed var(--line);border-radius:18px;background:var(--cream)}
 .empty-state p{margin:0 0 12px;color:var(--grey)}
 .empty-state-icon{margin-bottom:12px;color:var(--gold-2)}

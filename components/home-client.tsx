@@ -354,7 +354,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
         </div>
 
         {(displayListings.length > 0 || filtered.length === 0) && (
-        <section className="section-block section-alt" id="opportunities">
+        <section className="section-block section-alt listing-section" id="opportunities">
           <div className="shell">
             <div className="section-head">
               <div>
@@ -418,7 +418,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
         )}
 
         {(filter === "all" || underConstructionListings.length > 0) && (
-        <section className="section-block" id="under-construction">
+        <section className="section-block listing-section" id="under-construction">
           <div className="shell">
             <div className="section-head">
               <div>
