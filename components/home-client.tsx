@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AboutUs } from "@/components/about-us";
 import { CheckIcon, ChevronDownIcon, FilterIcon, InstagramIcon, SearchIcon, ShareIcon, WhatsAppIcon } from "@/components/icons";
 import { LeadModal, type LeadKind } from "@/components/lead-modal";
@@ -73,6 +73,12 @@ export function HomeClient({ initialListings }: HomeClientProps) {
   const setSortWithUrl = (value: "relevant" | "price-asc" | "price-desc" | "newest") => {
     setSort(value);
     updateParams({ sort: value });
+  };
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    updateParams({ q: query });
+    document.getElementById("opportunities")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const [modal, setModal] = useState<LeadKind | null>(null);
   const [loaded, setLoaded] = useState(initialListings.length > 0);
@@ -262,7 +268,7 @@ export function HomeClient({ initialListings }: HomeClientProps) {
               <form
                 className="search hero-search-form"
                 role="search"
-                onSubmit={(e) => e.preventDefault()}
+                onSubmit={handleSearchSubmit}
               >
                 <SearchIcon size={16} />
                 <input
