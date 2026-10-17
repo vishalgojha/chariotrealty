@@ -24,9 +24,12 @@ export function PropertyCard({ listing, onSelect, selected }: { listing: Listing
         </div>
 
         <div className="property-card-body">
-          <h3 className="property-card-title">{listing.name}</h3>
+          <div className="property-card-heading">
+            <h3 className="property-card-title">{listing.name}</h3>
+            <span className="property-card-arrow" aria-hidden="true">↗</span>
+          </div>
           <p className="property-card-location">{listing.location}</p>
-          <div className="property-card-price">{listing.price}{listing.priceNote ? ` ${listing.priceNote}` : ""}</div>
+          <div className="property-card-price-chip">{listing.price}{listing.priceNote ? ` ${listing.priceNote}` : ""}</div>
           {specs && <div className="property-card-specs">{specs}</div>}
           {listing.amenities.length > 0 && (
             <div className="property-card-amenities">
