@@ -97,6 +97,8 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
+  const [filterQuery, setFilterQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>("");
   const [page, setPage] = useState(1);
   const [extracting, setExtracting] = useState(0);
   const [viewing, setViewing] = useState<RawMessage | null>(null);
@@ -142,9 +144,8 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
 
   function handleFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    setQuery(String(form.get("q") || "").trim());
-    setStatus((String(form.get("status") || "") as StatusFilter) || "");
+    setQuery(filterQuery.trim());
+    setStatus(filterStatus);
     setPage(1);
   }
 
@@ -229,17 +230,18 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
             type="search"
             name="q"
             placeholder="Search message, sender, or group…"
-            defaultValue={query}
+            value={filterQuery}
+            onChange={(event) => setFilterQuery(event.target.value)}
             className="input"
           />
-          <select name="status" defaultValue={status} className="select">
+          <select name="status" value={filterStatus} onChange={(event) => setFilterStatus((event.target.value as StatusFilter) || "")} className="select">
             <option value="">All messages</option>
             <option value="none">Not extracted</option>
             <option value="extracted">Extracted</option>
           </select>
           <button type="submit" className="btn btn-dark">Filter</button>
-          {query && (
-            <button type="button" className="btn btn-light" onClick={() => { setQuery(""); setStatus(""); setPage(1); }}>
+          {(query || filterQuery || status || filterStatus) && (
+            <button type="button" className="btn btn-light" onClick={() => { setFilterQuery(""); setFilterStatus(""); setQuery(""); setStatus(""); setPage(1); }}>
               Clear
             </button>
           )}

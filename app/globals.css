@@ -385,6 +385,10 @@ img{max-width:100%;display:block}
 .wa-filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .wa-filter-row .input{flex:1;min-width:220px}
 .wa-filter-row .select{width:auto;min-width:160px}
+@media(max-width:560px){
+  .wa-filter-row{display:grid;grid-template-columns:1fr;gap:8px}
+  .wa-filter-row .input,.wa-filter-row .select,.wa-filter-row .btn{width:100%;min-width:0}
+}
 .wa-when{white-space:nowrap;color:var(--slate);font-size:12px}
 .wa-chat{max-width:180px}
 .wa-chat .tbl-sub{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
