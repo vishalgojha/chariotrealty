@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Image from "next/image";
 import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from "./icons";
 
 type MediaItem = { url: string; type: "image" | "video" };
@@ -9,10 +8,29 @@ type MediaItem = { url: string; type: "image" | "video" };
 export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [loadedUrls, setLoadedUrls] = useState<Set<string>>(() => new Set());
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
   const touchStartRef = useRef<number | null>(null);
 
   const total = media.length;
   const current = media[currentIndex];
+  const currentLoaded = Boolean(current && loadedUrls.has(current.url));
+  const currentFailed = Boolean(current && failedUrls.has(current.url));
+
+  useEffect(() => {
+    let cancelled = false;
+    media.forEach((item) => {
+      const image = new window.Image();
+      image.onload = () => {
+        if (!cancelled) setLoadedUrls((urls) => new Set(urls).add(item.url));
+      };
+      image.onerror = () => {
+        if (!cancelled) setFailedUrls((urls) => new Set(urls).add(item.url));
+      };
+      image.src = item.url;
+    });
+    return () => { cancelled = true; };
+  }, [media]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -55,17 +73,17 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
       <div className="gallery-main">
         {media.length === 1 ? (
           <div
-            className="gallery-main-slide"
+            className={`gallery-main-slide ${currentLoaded ? "is-loaded" : "is-loading"}`}
             onClick={() => openLightbox(0)}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && openLightbox(0)}
           >
-            <Image src={media[0].url} alt={name} fill className="gallery-img" unoptimized priority />
+            <img src={media[0].url} alt={name} className="gallery-img" onLoad={() => setLoadedUrls((urls) => new Set(urls).add(media[0].url))} onError={() => setFailedUrls((urls) => new Set(urls).add(media[0].url))} />
           </div>
         ) : (
-          <div className="gallery-main-slide">
-            <Image src={current?.url || ""} alt={name} fill className="gallery-img" unoptimized priority />
+          <div className={`gallery-main-slide ${currentLoaded ? "is-loaded" : "is-loading"}`}>
+            {currentFailed ? <div className="gallery-image-error">Photo unavailable</div> : <img src={current?.url || ""} alt={name} className="gallery-img" onLoad={() => current && setLoadedUrls((urls) => new Set(urls).add(current.url))} onError={() => current && setFailedUrls((urls) => new Set(urls).add(current.url))} />}
             <button className="gallery-lightbox-trigger" onClick={() => openLightbox(currentIndex)}>
               <div className="gallery-counter">{`${currentIndex + 1}/${total}`}</div>
             </button>
@@ -92,7 +110,7 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
             onClick={() => setCurrentIndex(index)}
             aria-label={`Photo ${index + 1} of ${total}`}
           >
-            <Image src={item.url} alt={`Photo ${index + 1}`} fill className="gallery-thumb-img" unoptimized />
+            <img src={item.url} alt={`Photo ${index + 1}`} className="gallery-thumb-img" loading="lazy" />
           </button>
         ))}
       </div>
@@ -106,7 +124,7 @@ export function Gallery({ media, name }: { media: MediaItem[]; name: string }) {
             {current?.type === "video" ? (
               <video key={current.url} src={current.url} muted loop autoPlay controls />
             ) : (
-              <Image src={current?.url || ""} alt={name} fill className="gallery-lightbox-img" unoptimized />
+              <img src={current?.url || ""} alt={name} className="gallery-lightbox-img" />
             )}
             {total > 1 && (
               <>
