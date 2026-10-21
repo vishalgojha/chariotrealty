@@ -18,6 +18,9 @@ const REQUEST_TIMEOUT_MS = 30_000;
 // Tried in order. Free models, so a 429 or a gated endpoint just moves on to the
 // next. Override with OPENROUTER_DESCRIPTION_MODEL (a comma-separated list).
 const DEFAULT_MODELS = [
+  // OpenRouter keeps this router pointed at an available free text model, so
+  // description generation survives individual free-model outages or retirements.
+  "openrouter/free",
   "nvidia/nemotron-3-super-120b-a12b:free",
   "google/gemma-4-31b-it:free",
   "nvidia/nemotron-3-ultra-550b-a55b:free",
