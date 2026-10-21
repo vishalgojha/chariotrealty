@@ -30,6 +30,7 @@ const EMPTY_FORM = {
   carpet_area_sqft: "",
   image_url: "",
   media_type: "image" as "image" | "video",
+  images: [] as Array<{ storage_path: string; public_url: string; media_type: "image" | "video" }>,
   status: "draft" as "draft" | "approved" | "published",
 };
 
@@ -270,6 +271,7 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       carpet_area_sqft: property.carpet_area_sqft ? String(property.carpet_area_sqft) : "",
       image_url: property.image_url || "",
       media_type: property.media_type || "image",
+      images: property.images || (property.image_url ? [{ storage_path: "", public_url: property.image_url, media_type: property.media_type || "image" }] : []),
       status: property.status as "draft" | "approved" | "published",
     });
   }
@@ -296,22 +298,31 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
   }
 
   async function uploadImage(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    const remaining = 10 - form.images.length;
+    if (files.length > remaining) {
+      setError(`You can add up to 10 photos or videos per listing. ${remaining} slot${remaining === 1 ? "" : "s"} remaining.`);
+      event.target.value = "";
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      const data = new FormData();
-      data.append("file", file);
-      const response = await fetch(`/api/inventory/images`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${readStoredSession()?.access_token || ""}` },
-        body: data,
-      });
-      const payload = await readJson(response);
-      if (!response.ok) throw new Error(payload.error || "Could not upload image");
-       patch({ image_url: payload.public_url, media_type: payload.media_type || "image" });
-       notify(payload.media_type === "video" ? "Video uploaded" : "Image uploaded");
+      const uploaded = await Promise.all(files.map(async (file) => {
+        const data = new FormData();
+        data.append("file", file);
+        const response = await fetch(`/api/inventory/images`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${readStoredSession()?.access_token || ""}` },
+          body: data,
+        });
+        const payload = await readJson(response);
+        if (!response.ok) throw new Error(payload.error || "Could not upload image");
+        return { storage_path: payload.path, public_url: payload.public_url, media_type: payload.media_type || "image" } as const;
+      }));
+      patch({ images: [...form.images, ...uploaded], image_url: form.images[0]?.public_url || uploaded[0]?.public_url || "", media_type: form.images[0]?.media_type || uploaded[0]?.media_type || "image" });
+      notify(`${uploaded.length} ${uploaded.length === 1 ? "media item" : "media items"} uploaded`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not upload image");
     } finally {
@@ -528,15 +539,28 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
             <small className="field-hint">Start typing, select from Google Places suggestions</small>
           </label>
           <label className="field">
-            <span>Image</span>
-                 <input className="input" type="url" placeholder="Paste media URL, or upload below" value={form.image_url} onChange={(e) => patch({ image_url: e.target.value })} />
+            <span>Photos ({form.images.length}/10)</span>
+            <input className="input" type="url" placeholder="Paste cover media URL, or upload below" value={form.image_url} onChange={(e) => patch({ image_url: e.target.value })} />
             <small className="field-hint">
               <label className="btn btn-light btn-sm" role="button">
-                Upload image
-                 <input type="file" accept="image/*,video/*" className="file-input" onChange={uploadImage} disabled={busy} />
+                Upload photos
+                <input type="file" accept="image/*,video/*" multiple className="file-input" onChange={uploadImage} disabled={busy || form.images.length >= 10} />
               </label>
               {busy && <em> Uploading…</em>}
             </small>
+            {form.images.length ? (
+              <div className="field-controls" style={{ marginTop: 8, flexWrap: "wrap" }}>
+                {form.images.map((media, index) => (
+                  <div key={`${media.public_url}-${index}`} style={{ position: "relative" }}>
+                    {media.media_type === "video" ? <video src={media.public_url} muted playsInline style={{ width: 72, height: 54, objectFit: "cover" }} /> : <img src={media.public_url} alt={`Photo ${index + 1}`} style={{ width: 72, height: 54, objectFit: "cover" }} />}
+                    <button type="button" className="btn btn-light btn-sm" aria-label={`Remove photo ${index + 1}`} onClick={() => {
+                      const images = form.images.filter((_, itemIndex) => itemIndex !== index);
+                      patch({ images, image_url: images[0]?.public_url || "", media_type: images[0]?.media_type || "image" });
+                    }}>×</button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </label>
           <div className="field description-builder" style={{ gridColumn: "1 / -1" }}>
             <span>Public description — shown on the website</span>

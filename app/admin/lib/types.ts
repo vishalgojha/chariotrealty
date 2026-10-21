@@ -57,6 +57,11 @@ export type CmsProperty = {
   carpet_area_sqft?: number;
   image_url?: string;
   media_type?: "image" | "video";
+  images?: Array<{
+    storage_path: string;
+    public_url: string;
+    media_type: "image" | "video";
+  }>;
   // Values can be arrays: the typed listing tables store amenities as lists.
   custom_fields?: Record<string, string | number | boolean | string[]>;
   status: string;
