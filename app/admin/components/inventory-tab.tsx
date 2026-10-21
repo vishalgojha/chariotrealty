@@ -173,6 +173,9 @@ export function InventoryTab({ api, notify }: { api: AdminApi; notify: Notify })
       const body = {
         ...form,
         ...(editing && form.id ? { id: form.id } : {}),
+        // The CMS uses locality as the selected micro-market when no separate
+        // micro-market field is shown in the form.
+        micro_market: form.locality,
         // The generated description rides along with the other custom fields, so
         // it is stored under the one key the public site is allowed to read.
         custom_fields: { ...customValues, ...(description.trim() ? { public_description: description.trim() } : {}) },
