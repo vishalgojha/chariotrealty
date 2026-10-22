@@ -270,6 +270,18 @@ img{max-width:100%;display:block}
 .message-section-head{display:flex;align-items:center;gap:8px;margin:0 0 10px}
 .message-section-head h3{margin:0;font-size:16px;color:var(--ink)}
 .own-message-section{border-top:1px solid var(--border);padding-top:18px}
+.dm-strip{margin:16px 0 6px;border:1px solid var(--border);border-radius:14px;background:var(--bg-subtle);padding:14px}
+.dm-list{list-style:none;margin:0;padding:0;display:grid;gap:8px;max-height:320px;overflow-y:auto}
+.dm-item{width:100%;display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:12px;text-align:left;background:var(--bg-surface);border:1px solid var(--border);border-radius:11px;padding:11px 13px;cursor:pointer;font:inherit;color:inherit}
+.dm-item:hover{border-color:var(--bronze)}
+.dm-when{font-size:11.5px;color:var(--slate);white-space:nowrap}
+.dm-text{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm-go{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--bronze);font-weight:700}
+@media(max-width:640px){
+  .dm-item{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}
+  .dm-when{grid-column:1/-1}
+  .dm-text{white-space:normal}
+}
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
 .tbl th{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--slate);text-align:left;font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--bg-subtle);white-space:nowrap}
 .tbl td{padding:13px 12px;border-bottom:1px solid var(--border);vertical-align:middle}

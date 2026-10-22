@@ -27,6 +27,15 @@ type Extraction = { id: number; table: string; status: string };
 
 type StatusFilter = "" | "none" | "extracted";
 
+type ScopeFilter = "" | "owner" | "direct" | "groups";
+
+const SCOPE_OPTIONS: { value: ScopeFilter; label: string }[] = [
+  { value: "", label: "Everything" },
+  { value: "owner", label: "Kapil’s messages" },
+  { value: "direct", label: "Direct chats" },
+  { value: "groups", label: "Groups" },
+];
+
 function textFromPayload(value: unknown, depth = 0, allowString = false): string {
   if (depth > 6 || value === null || value === undefined) return "";
   if (typeof value === "string") {
@@ -99,6 +108,9 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   const [status, setStatus] = useState<StatusFilter>("");
   const [filterQuery, setFilterQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<StatusFilter>("");
+  const [scope, setScope] = useState<ScopeFilter>("");
+  const [filterScope, setFilterScope] = useState<ScopeFilter>("");
+  const [ownerDms, setOwnerDms] = useState<RawMessage[]>([]);
   const [page, setPage] = useState(1);
   const [extracting, setExtracting] = useState(0);
   const [viewing, setViewing] = useState<RawMessage | null>(null);
@@ -113,7 +125,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
   }, [viewing]);
 
   const load = useCallback(
-    async (nextPage: number, nextQuery: string, nextStatus: StatusFilter) => {
+    async (nextPage: number, nextQuery: string, nextStatus: StatusFilter, nextScope: ScopeFilter) => {
       setLoading(true);
       setError("");
       const params = new URLSearchParams();
@@ -121,6 +133,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
       params.set("offset", String((nextPage - 1) * PAGE_SIZE));
       if (nextQuery) params.set("q", nextQuery);
       if (nextStatus) params.set("status", nextStatus);
+      if (nextScope) params.set("scope", nextScope);
       try {
         const response = await api.get(`/api/admin/whatsapp/list?${params.toString()}`);
         const payload = await readJson(response);
@@ -138,14 +151,32 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
     [api],
   );
 
+  // Kapil's own direct chats are pinned to the top of the tab. Group traffic
+  // runs to hundreds of thousands of rows, so without this they are buried.
+  const loadOwnerDms = useCallback(async () => {
+    try {
+      const response = await api.get("/api/admin/whatsapp/list?scope=owner_direct&limit=25");
+      const payload = await readJson(response);
+      if (!response.ok) return;
+      setOwnerDms(payload.messages || []);
+    } catch {
+      // A missing DM feed should never break the rest of the tab.
+    }
+  }, [api]);
+
   useEffect(() => {
-    load(page, query, status);
-  }, [load, page, query, status]);
+    load(page, query, status, scope);
+  }, [load, page, query, status, scope]);
+
+  useEffect(() => {
+    loadOwnerDms();
+  }, [loadOwnerDms]);
 
   function handleFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setQuery(filterQuery.trim());
     setStatus(filterStatus);
+    setScope(filterScope);
     setPage(1);
   }
 
@@ -159,7 +190,7 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
       if (!response.ok) throw new Error(payload.error || "Extraction failed");
       const table = payload.table ? ` in ${payload.table}` : "";
       notify(payload.already_extracted ? `Already extracted${table}.` : `Extracted${table}. Draft saved.`);
-      load(page, query, status);
+      load(page, query, status, scope);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Extraction failed";
       setError(message);
@@ -234,20 +265,45 @@ export function MessagesTab({ api, notify }: { api: AdminApi; notify: Notify }) 
             onChange={(event) => setFilterQuery(event.target.value)}
             className="input"
           />
+          <select name="scope" value={filterScope} onChange={(event) => setFilterScope((event.target.value as ScopeFilter) || "")} className="select">
+            {SCOPE_OPTIONS.map((option) => (
+              <option key={option.value || "all"} value={option.value}>{option.label}</option>
+            ))}
+          </select>
           <select name="status" value={filterStatus} onChange={(event) => setFilterStatus((event.target.value as StatusFilter) || "")} className="select">
             <option value="">All messages</option>
             <option value="none">Not extracted</option>
             <option value="extracted">Extracted</option>
           </select>
           <button type="submit" className="btn btn-dark">Filter</button>
-          {(query || filterQuery || status || filterStatus) && (
-            <button type="button" className="btn btn-light" onClick={() => { setFilterQuery(""); setFilterStatus(""); setQuery(""); setStatus(""); setPage(1); }}>
+          {(query || filterQuery || status || filterStatus || scope || filterScope) && (
+            <button type="button" className="btn btn-light" onClick={() => { setFilterQuery(""); setFilterStatus(""); setFilterScope(""); setQuery(""); setStatus(""); setScope(""); setPage(1); }}>
               Clear
             </button>
           )}
         </form>
 
         {error && <Note tone="error">{error}</Note>}
+
+        {scope !== "owner" && ownerDms.length > 0 && (
+          <section className="dm-strip">
+            <div className="message-section-head">
+              <h3>Kapil’s DMs</h3>
+              <Pill tone="live">{ownerDms.length}</Pill>
+            </div>
+            <ul className="dm-list">
+              {ownerDms.map((message) => (
+                <li key={message.id}>
+                  <button type="button" className="dm-item" onClick={() => setViewing(message)}>
+                    <span className="dm-when">{new Date(message.message_timestamp).toLocaleString()}</span>
+                    <span className="dm-text">{previewOf(message)}</span>
+                    <span className="dm-go">Open</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {loading ? (
           <EmptyPanel title="Loading messages…">Fetching from the raw store.</EmptyPanel>

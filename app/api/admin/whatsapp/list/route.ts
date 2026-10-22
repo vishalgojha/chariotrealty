@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
   const offset = Math.max(Number(searchParams.get("offset") || "0"), 0);
   const query = searchParams.get("q") || "";
   const status = searchParams.get("status") || "";
+  const scope = searchParams.get("scope") || "";
 
   const list = new URLSearchParams();
   list.set("select", "*");
@@ -50,6 +51,18 @@ export async function GET(request: NextRequest) {
   list.set("order", "message_timestamp.desc");
   list.set("limit", String(limit));
   list.set("offset", String(offset));
+  // Group traffic dwarfs direct chats, so the admin needs a way to narrow the
+  // capture down to the owner's own messages instead of paging through them.
+  const ownerPhone = (process.env.CHARIOT_WHATSAPP_SELF_JID || "").split("@")[0]?.split(":")[0] || "919773757759";
+  if (scope === "owner" || scope === "owner_direct") {
+    list.set("sender_phone", `ilike.*${ownerPhone}*`);
+  }
+  if (scope === "direct" || scope === "owner_direct") {
+    list.set("is_group", "eq.false");
+  }
+  if (scope === "groups") {
+    list.set("is_group", "eq.true");
+  }
   if (query) {
     const needle = query.replace(/[%,()]/g, "");
     // Some ingested messages keep their text in raw_payload while the
